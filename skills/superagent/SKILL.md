@@ -7,6 +7,28 @@ description: Use when starting any session or complex task — master routing sk
 
 Master orchestrator. Routes every task to the optimal skill stack. Invoke FIRST, then chain skills below.
 
+## Installation
+
+One command installs everything (Claude plugins + Python tools):
+
+```bash
+git clone https://github.com/animeshbasak/SuperAgent
+bash SuperAgent/install.sh
+```
+
+**What gets installed:**
+| Tool | Type | Purpose |
+|------|------|---------|
+| superagent | Claude plugin | This skill — master router |
+| superpowers | Claude plugin | 20+ workflow skills |
+| caveman | Claude plugin | Token reduction mode |
+| claude-mem | Claude plugin | Cross-session memory + AST search |
+| ui-ux-pro-max | Claude plugin | Frontend design intelligence |
+| graphify | Python (pip) | 71.5x token reduction — codebase knowledge graph |
+| mempalace | Python (pip) | 96.6% retrieval accuracy — local AI memory |
+
+After install: restart Claude Code, then type `superagent` to activate.
+
 ---
 
 ## Skill Roster
