@@ -45,6 +45,7 @@ if [[ "${1:-}" == "--calibrate" ]]; then
   init_stats
 
   TMP=$(mktemp)
+  trap 'rm -f "$TMP"' EXIT
   jq --arg project "$PROJECT" \
      --argjson ratio "$RATIO" \
      --argjson corpus "${CORPUS:-0}" \
@@ -84,9 +85,16 @@ echo "$COMMAND" | grep -q "mempalace"  && TOOL_TYPE="mempalace"
 
 init_stats
 
+# Recover from corrupt JSON
+if ! jq empty "$STATS" 2>/dev/null; then
+  log "corrupt stats JSON — backing up and reinitializing"
+  cp "$STATS" "${STATS}.bak" 2>/dev/null || true
+  echo '{"version":1,"projects":{}}' > "$STATS"
+fi
+
 # Dedup — skip if we already recorded this command today
 TODAY=$(date '+%Y-%m-%d')
-HASH=$(printf '%s%s' "$TODAY" "$COMMAND" | shasum -a 256 | cut -c1-12)
+HASH=$(printf '%s%s' "$TODAY" "$COMMAND" | (shasum -a 256 2>/dev/null || sha256sum 2>/dev/null) | cut -c1-12)
 PROJECT="$PWD"
 
 ALREADY_SEEN=$(jq --arg p "$PROJECT" --arg h "$HASH" \
@@ -103,17 +111,19 @@ RATIO=$(jq --arg p "$PROJECT" '.projects[$p].compression_ratio // 0' "$STATS" 2>
 
 # Compute savings
 if [[ "$TOOL_TYPE" == "graphify" ]]; then
-  if (( $(echo "$RATIO <= 0" | bc) )); then
+  if [[ -z "$RATIO" ]] || (( $(echo "$RATIO <= 1" | bc 2>/dev/null || echo 1) )); then
     SAVED=0
   else
     SAVED=$(echo "scale=0; $RESPONSE_TOKENS * ($RATIO - 1) / 1" | bc 2>/dev/null || echo 0)
   fi
 else
+  # mempalace: conservative 20x baseline, labeled ~estimate in display
   SAVED=$(echo "scale=0; $RESPONSE_TOKENS * 19 / 1" | bc 2>/dev/null || echo 0)
 fi
 
 # Atomic write
 TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
 jq --arg project  "$PROJECT" \
    --arg tool     "$TOOL_TYPE" \
    --argjson saved "$SAVED" \
