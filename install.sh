@@ -144,6 +144,15 @@ else
   warn "~/.claude/skills/superagent already exists, skipping"
 fi
 
+TOKEN_STATS_SKILLS_DIR="$CLAUDE_DIR/skills/token-stats"
+if [[ ! -e "$TOKEN_STATS_SKILLS_DIR" ]]; then
+  ln -s "$SCRIPT_DIR/skills/token-stats" "$TOKEN_STATS_SKILLS_DIR" 2>/dev/null \
+    || cp -r "$SCRIPT_DIR/skills/token-stats" "$TOKEN_STATS_SKILLS_DIR"
+  ok "Skill linked at ~/.claude/skills/token-stats"
+else
+  warn "~/.claude/skills/token-stats already exists, skipping"
+fi
+
 AGENTS_DIR="$CLAUDE_DIR/agents"
 mkdir -p "$AGENTS_DIR"
 if [[ -f "$SCRIPT_DIR/agents/superagent-brain.md" && ! -f "$AGENTS_DIR/superagent-brain.md" ]]; then
