@@ -7,6 +7,41 @@ description: Use when starting any session or complex task — master routing sk
 
 Master orchestrator. Routes every task to the optimal skill stack. Invoke FIRST, then chain skills below.
 
+---
+
+## Always-On: Graphify + MemPalace
+
+These two tools are **default active** — run them at the start of every session, no explicit command needed.
+
+### Session Startup Protocol (run immediately on activation)
+
+**Step 1 — MemPalace wake-up** (loads cross-session memory):
+```bash
+mempalace wake-up
+```
+This surfaces: prior decisions, known bugs, recent work, project context. Run before ANY task.
+
+**Step 2 — Graphify auto-index** (if not already indexed):
+```bash
+# Check if graph exists for this project
+[ -f graph.json ] && echo "graph ready" || graphify .
+```
+- If `graph.json` exists → graph is ready, use `/graphify query` for codebase questions
+- If not → index now (runs once, SHA256 cached on subsequent runs)
+
+### Default Query Routing
+
+| Instead of... | Use this (default) |
+|---------------|--------------------|
+| Reading many files to understand structure | `graphify query "how does X work?"` |
+| Grepping for connections between modules | `graphify path "ModuleA" "ModuleB"` |
+| Asking "did we solve this before?" | `mempalace search "query"` |
+| Starting a session cold | `mempalace wake-up` (always) |
+
+**These are not optional.** Skip them only if the user explicitly says "skip memory" or "no indexing."
+
+---
+
 ## Installation
 
 One command installs everything (Claude plugins + Python tools):
@@ -141,15 +176,19 @@ Auto-save hooks: periodic saving + pre-compression context preservation.
 ## Master Decision Flow
 
 ```
+SESSION START (always)
+  ├── 1. mempalace wake-up          ← load cross-session memory
+  └── 2. graphify . (if no graph)   ← index codebase once
+
 Task received
   ├── Creative / new feature?  → brainstorming → writing-plans → TDD → executing-plans
   ├── Bug / failure?           → systematic-debugging → TDD → verification
   ├── 2+ independent tasks?    → dispatching-parallel-agents → subagent-driven-development
-  ├── Explore codebase?        → smart-explore or graphify → mem-search
-  ├── Past memory needed?      → mempalace search → claude-mem:mem-search
+  ├── Explore codebase?        → graphify query (DEFAULT) → smart-explore → mem-search
+  ├── Past memory needed?      → mempalace search (DEFAULT) → claude-mem:mem-search
   ├── UI work?                 → ui-ux-pro-max → TDD → verification
   ├── Ready to ship?           → requesting-code-review → finishing-a-development-branch
-  └── Need prior context?      → mem-search → knowledge-agent
+  └── Need prior context?      → mempalace wake-up → mem-search → knowledge-agent
 ```
 
 ---
