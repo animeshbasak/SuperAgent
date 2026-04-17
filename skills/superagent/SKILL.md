@@ -45,11 +45,36 @@ Master orchestrator. Routes every task to the optimal skill stack. Invoke this F
 ### Codebase Intelligence
 | Skill | Trigger |
 |-------|---------|
-| `graphify` | Cross-modal graph (code + docs + papers + video) |
 | `claude-mem:smart-explore` | AST structural code search, token-efficient |
 | `claude-mem:mem-search` | "Did we solve this before?" cross-session search |
 | `claude-mem:knowledge-agent` | Build AI knowledge base from observations |
 | `claude-mem:timeline-report` | Project history narrative |
+
+#### Graphify (Built-in)
+Transform any folder (code, docs, PDFs, images, videos) into a queryable knowledge graph. 71.5x token reduction per query vs raw file reads.
+
+**Install:** `pip install graphifyy && graphify install`
+
+| Task | Command |
+|------|---------|
+| Build graph | `/graphify .` or `/graphify ./src` |
+| Query relationships | `/graphify query "what connects X to Y?"` |
+| Find path between nodes | `/graphify path "NodeA" "NodeB"` |
+| Add remote content | `/graphify add https://arxiv.org/abs/...` |
+| Watch mode | `/graphify ./src --watch` |
+| Export | `--neo4j`, `--wiki`, `--graphml`, `--svg` |
+
+**Output:** `GRAPH_REPORT.md` (god nodes + surprising connections), `graph.json` (persistent, SHA256 cached), interactive HTML.
+
+**Relationship tags:** `EXTRACTED` (direct), `INFERRED` (confidence scored), `AMBIGUOUS` (flagged).
+
+**When to use graphify vs smart-explore:**
+- Cross-modal (code + docs + papers + video) → graphify
+- Persistent queryable graph across sessions → graphify
+- Quick AST/symbol search → `claude-mem:smart-explore`
+- One-off grep → `Grep` directly
+
+**Privacy:** Code = local AST only. Audio/video = local Whisper. Docs/images = sent to your API key.
 
 ### UI/UX
 | Skill | Trigger |

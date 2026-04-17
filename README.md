@@ -12,8 +12,7 @@ A master orchestrator skill for Claude Code that routes every task to the optima
 
 | Skill | Purpose |
 |-------|---------|
-| [`skills/superagent/`](skills/superagent/SKILL.md) | Master router skill — the heart of SuperAgent |
-| [`skills/graphify/`](skills/graphify/SKILL.md) | Knowledge graph skill — transforms any codebase/docs/video into a queryable graph |
+| [`skills/superagent/`](skills/superagent/SKILL.md) | Master router skill — includes graphify, all best practices, full skill roster |
 
 ### Best Practices
 
@@ -45,7 +44,6 @@ SuperAgent bundles and routes to these skill groups:
 
 ```bash
 cp -r skills/superagent ~/.claude/skills/superagent
-cp -r skills/graphify ~/.claude/skills/graphify
 cp agents/superagent-brain.md ~/.claude/agents/superagent-brain.md
 ```
 
@@ -54,7 +52,6 @@ cp agents/superagent-brain.md ~/.claude/agents/superagent-brain.md
 ```bash
 git clone https://github.com/animeshbasak/SuperAgent
 ln -s $(pwd)/SuperAgent/skills/superagent ~/.claude/skills/superagent
-ln -s $(pwd)/SuperAgent/skills/graphify ~/.claude/skills/graphify
 cp SuperAgent/agents/superagent-brain.md ~/.claude/agents/superagent-brain.md
 ```
 
