@@ -24,10 +24,10 @@ This surfaces: prior decisions, known bugs, recent work, project context. Run be
 **Step 2 — Graphify auto-index** (if not already indexed):
 ```bash
 # Check if graph exists for this project
-[ -f graph.json ] && echo "graph ready" || graphify .
+[ -f graphify-out/graph.json ] && echo "graph ready" || graphify update ./src
 ```
-- If `graph.json` exists → graph is ready, use `/graphify query` for codebase questions
-- If not → index now (runs once, SHA256 cached on subsequent runs)
+- If `graphify-out/graph.json` exists → graph is ready, use `graphify query` for codebase questions
+- If not → index now with `graphify update <dir>` (runs once, SHA256 cached on subsequent runs)
 
 ### Default Query Routing
 
@@ -116,11 +116,11 @@ Transform any folder (code, docs, PDFs, images, videos) into a queryable knowled
 
 | Task | Command |
 |------|---------|
-| Build graph | `/graphify .` or `/graphify ./src` |
+| Build graph | `graphify update .` or `graphify update ./src` |
 | Query | `/graphify query "what connects X to Y?"` |
 | Find path | `/graphify path "NodeA" "NodeB"` |
 | Add remote | `/graphify add https://arxiv.org/abs/...` |
-| Watch mode | `/graphify ./src --watch` |
+| Watch mode | `graphify watch ./src` |
 | Export | `--neo4j`, `--wiki`, `--graphml`, `--svg` |
 
 Outputs: `GRAPH_REPORT.md`, `graph.json` (SHA256 cached), interactive HTML.
@@ -178,7 +178,7 @@ Auto-save hooks: periodic saving + pre-compression context preservation.
 ```
 SESSION START (always)
   ├── 1. mempalace wake-up          ← load cross-session memory
-  └── 2. graphify . (if no graph)   ← index codebase once
+  └── 2. graphify update ./src (if no graph)  ← index codebase once
 
 Task received
   ├── Creative / new feature?  → brainstorming → writing-plans → TDD → executing-plans

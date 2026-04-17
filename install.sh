@@ -193,48 +193,93 @@ echo ""
 # ── Step 7: Install Python tools (graphify + mempalace) ───────────────────────
 info "Installing Python tools (graphify + mempalace)..."
 
-PIP_CMD=""
-command -v pip3  >/dev/null 2>&1 && PIP_CMD="pip3"
-command -v pip   >/dev/null 2>&1 && [[ -z "$PIP_CMD" ]] && PIP_CMD="pip"
-command -v pipx  >/dev/null 2>&1 && [[ -z "$PIP_CMD" ]] && PIP_CMD="pipx"
-
-if [[ -z "$PIP_CMD" ]]; then
-  warn "pip not found — after installing Python 3, run:"
-  warn "  pip install graphifyy && graphify install"
-  warn "  pip install mempalace"
+# Prefer pipx — works on macOS system Python (externally-managed-environment)
+# Auto-install pipx via brew if missing
+if ! command -v pipx >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
+    info "pipx not found — installing via brew..."
+    brew install pipx --quiet \
+      && pipx ensurepath --force >/dev/null 2>&1 \
+      && export PATH="$HOME/.local/bin:$PATH" \
+      && ok "pipx installed" \
+      || warn "brew install pipx failed — install manually: brew install pipx"
+  else
+    warn "pipx not found. Install it: https://pipx.pypa.io/stable/installation/"
+    warn "Then re-run: bash install.sh"
+  fi
 else
-  info "Installing graphify (71.5x token reduction for codebase queries)..."
-  $PIP_CMD install graphifyy --quiet 2>&1 | tail -1 \
-    && graphify install --quiet 2>/dev/null \
-    && ok "graphify installed — use: graphify . to index a project" \
-    || warn "graphify install failed — try: pip install graphifyy && graphify install"
+  # Ensure pipx-managed bins are in PATH for this session
+  export PATH="$HOME/.local/bin:$PATH"
+fi
 
-  info "Installing mempalace (96.6% cross-session memory retrieval)..."
-  $PIP_CMD install mempalace --quiet 2>&1 | tail -1 \
-    && ok "mempalace installed — use: mempalace init ~/projects/myapp" \
-    || warn "mempalace install failed — try: pip install mempalace"
+if command -v pipx >/dev/null 2>&1; then
+  info "Installing graphify (71.5x token reduction)..."
+  pipx install graphifyy 2>&1 | tail -2 \
+    && ok "graphify installed" \
+    || { pipx upgrade graphifyy 2>&1 | tail -1 && ok "graphify upgraded"; }
+
+  info "Installing mempalace (96.6% retrieval accuracy)..."
+  pipx install mempalace 2>&1 | tail -2 \
+    && ok "mempalace installed" \
+    || { pipx upgrade mempalace 2>&1 | tail -1 && ok "mempalace upgraded"; }
+else
+  warn "Skipping Python tools — pipx unavailable."
+  warn "Install pipx then re-run: bash install.sh"
+fi
+echo ""
+
+# ── Step 8: Auto-initialize mempalace ────────────────────────────────────────
+info "Initializing mempalace for ~/.claude ..."
+MEMPALACE_BIN=$(command -v mempalace 2>/dev/null || echo "$HOME/.local/bin/mempalace")
+if [[ -x "$MEMPALACE_BIN" ]]; then
+  "$MEMPALACE_BIN" init "$CLAUDE_DIR" --yes 2>&1 | tail -3 \
+    && ok "mempalace init complete" \
+    || warn "mempalace init failed — run manually after restart: mempalace init ~/.claude --yes"
+
+  info "Mining ~/.claude into mempalace (skills, agents, config)..."
+  "$MEMPALACE_BIN" mine "$CLAUDE_DIR" 2>&1 | tail -3 \
+    && ok "mempalace index built for ~/.claude" \
+    || warn "mempalace mine failed — run manually: mempalace mine ~/.claude"
+else
+  warn "mempalace not found — restart terminal then run:"
+  warn "  mempalace init ~/.claude --yes && mempalace mine ~/.claude"
+fi
+echo ""
+
+# ── Step 9: Auto-build graphify knowledge graph ───────────────────────────────
+info "Building graphify knowledge graph for ~/.claude/skills ..."
+GRAPHIFY_BIN=$(command -v graphify 2>/dev/null || echo "$HOME/.local/bin/graphify")
+if [[ -x "$GRAPHIFY_BIN" ]]; then
+  pushd "$CLAUDE_DIR" >/dev/null
+  "$GRAPHIFY_BIN" update "$CLAUDE_DIR/skills" 2>&1 | tail -3 \
+    && ok "graphify graph built (graphify-out/graph.json)" \
+    || warn "graphify update failed — run manually: cd ~/.claude && graphify update skills"
+  popd >/dev/null
+else
+  warn "graphify not found — restart terminal then run:"
+  warn "  cd ~/.claude && graphify update skills"
 fi
 echo ""
 
 # ── Done ─────────────────────────────────────────────────────────────────────
 echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║           Superagent ready!                      ║${NC}"
+echo -e "${GREEN}║        Superagent installed & initialized!       ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
-echo "  What was installed:"
+echo "  Installed:"
 echo "    ✓ superagent         — master orchestrator"
 echo "    ✓ superpowers        — 20+ workflow skills (TDD, planning, debugging)"
 echo "    ✓ caveman            — token reduction mode"
 echo "    ✓ claude-mem         — cross-session memory & AST search"
 echo "    ✓ ui-ux-pro-max      — frontend design intelligence"
-echo "    ✓ graphify           — 71.5x token reduction for codebase queries"
-echo "    ✓ mempalace          — 96.6% retrieval accuracy local memory"
+echo "    ✓ graphify           — knowledge graph (auto-indexed ~/.claude/skills)"
+echo "    ✓ mempalace          — cross-session memory (auto-indexed ~/.claude)"
 echo ""
-echo "  Getting started:"
-echo "    1. Restart Claude Code  (or /reload-plugins)"
-echo "    2. Type: superagent     (to activate)"
-echo "    3. /graphify .          (to index current project)"
-echo "    4. mempalace wake-up    (to load session context)"
+echo "  One step remaining:"
+echo "    1. Restart Claude Code"
+echo "    2. Type: superagent"
+echo ""
+echo "  Everything else is already set up. graphify + mempalace are live."
 echo ""
 echo -e "  ${CYAN}Docs:${NC} https://github.com/animeshbasak/SuperAgent"
 echo ""
