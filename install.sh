@@ -253,11 +253,57 @@ if [[ -x "$GRAPHIFY_BIN" ]]; then
   pushd "$CLAUDE_DIR" >/dev/null
   "$GRAPHIFY_BIN" update "$CLAUDE_DIR/skills" 2>&1 | tail -3 \
     && ok "graphify graph built (graphify-out/graph.json)" \
+    && { bash "$CLAUDE_DIR/superagent-tracker.sh" --calibrate "$CLAUDE_DIR" 2>/dev/null || true; } \
     || warn "graphify update failed — run manually: cd ~/.claude && graphify update skills"
   popd >/dev/null
 else
   warn "graphify not found — restart terminal then run:"
   warn "  cd ~/.claude && graphify update skills"
+fi
+echo ""
+
+# ── Step 10: Install token savings tracker ────────────────────────────────────
+info "Installing token savings tracker..."
+TRACKER_SRC="$SCRIPT_DIR/hooks/superagent-tracker.sh"
+STATUSLINE_SRC="$SCRIPT_DIR/hooks/superagent-statusline.sh"
+
+if [[ -f "$TRACKER_SRC" && -f "$STATUSLINE_SRC" ]]; then
+  cp "$TRACKER_SRC"    "$CLAUDE_DIR/superagent-tracker.sh"
+  cp "$STATUSLINE_SRC" "$CLAUDE_DIR/superagent-statusline.sh"
+  chmod +x "$CLAUDE_DIR/superagent-tracker.sh"
+  chmod +x "$CLAUDE_DIR/superagent-statusline.sh"
+  ok "Tracker scripts installed to ~/.claude/"
+
+  # Wire PostToolUse hook and statusLine in settings.json
+  node - <<'JSEOF'
+const fs = require('fs'), path = require('path');
+const file = path.join(process.env.HOME, '.claude', 'settings.json');
+let cfg = {};
+try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+
+cfg.hooks = cfg.hooks || {};
+cfg.hooks.PostToolUse = cfg.hooks.PostToolUse || [];
+const trackerCmd = `bash "${path.join(process.env.HOME, '.claude', 'superagent-tracker.sh')}"`;
+const alreadyWired = cfg.hooks.PostToolUse.some(h =>
+  h.hooks && h.hooks.some(hh => hh.command && hh.command.includes('superagent-tracker'))
+);
+if (!alreadyWired) {
+  cfg.hooks.PostToolUse.push({
+    matcher: "Bash",
+    hooks: [{ type: "command", command: trackerCmd }]
+  });
+}
+
+const statusCmd = `bash "${path.join(process.env.HOME, '.claude', 'superagent-statusline.sh')}"`;
+if (!cfg.statusLine || !cfg.statusLine.command || !cfg.statusLine.command.includes('superagent-statusline')) {
+  cfg.statusLine = { type: "command", command: statusCmd };
+}
+
+fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
+JSEOF
+  ok "PostToolUse hook + statusLine wired in ~/.claude/settings.json"
+else
+  warn "Hook scripts not found in $SCRIPT_DIR/hooks/ — skipping tracker install"
 fi
 echo ""
 
@@ -274,6 +320,7 @@ echo "    ✓ claude-mem         — cross-session memory & AST search"
 echo "    ✓ ui-ux-pro-max      — frontend design intelligence"
 echo "    ✓ graphify           — knowledge graph (auto-indexed ~/.claude/skills)"
 echo "    ✓ mempalace          — cross-session memory (auto-indexed ~/.claude)"
+echo "    ✓ token-stats        — real token savings tracking (statusline + /token-stats)"
 echo ""
 echo "  One step remaining:"
 echo "    1. Restart Claude Code"
