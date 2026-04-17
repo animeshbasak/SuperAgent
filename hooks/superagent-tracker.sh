@@ -103,7 +103,11 @@ RATIO=$(jq --arg p "$PROJECT" '.projects[$p].compression_ratio // 0' "$STATS" 2>
 
 # Compute savings
 if [[ "$TOOL_TYPE" == "graphify" ]]; then
-  SAVED=$(echo "scale=0; $RESPONSE_TOKENS * ($RATIO - 1) / 1" | bc 2>/dev/null || echo 0)
+  if (( $(echo "$RATIO <= 0" | bc) )); then
+    SAVED=0
+  else
+    SAVED=$(echo "scale=0; $RESPONSE_TOKENS * ($RATIO - 1) / 1" | bc 2>/dev/null || echo 0)
+  fi
 else
   SAVED=$(echo "scale=0; $RESPONSE_TOKENS * 19 / 1" | bc 2>/dev/null || echo 0)
 fi
