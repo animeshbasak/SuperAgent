@@ -4,6 +4,10 @@ A master orchestrator skill for Claude Code that routes every task to the optima
 
 ## What's Inside
 
+### AI Brain (Auto-Router)
+
+[`agents/superagent-brain.md`](agents/superagent-brain.md) — A PROACTIVE Claude agent that automatically analyzes every incoming task, scores it against all skill triggers, and invokes the optimal skill chain without you having to ask. Uses Opus model. Triggers on build / fix / explore / design / review / ship intents.
+
 ### Skills
 
 | Skill | Purpose |
@@ -37,11 +41,12 @@ SuperAgent bundles and routes to these skill groups:
 
 ## Installation
 
-### Option 1: Copy skills to your Claude skills directory
+### Option 1: Copy skills and agent
 
 ```bash
 cp -r skills/superagent ~/.claude/skills/superagent
 cp -r skills/graphify ~/.claude/skills/graphify
+cp agents/superagent-brain.md ~/.claude/agents/superagent-brain.md
 ```
 
 ### Option 2: Clone and symlink
@@ -50,6 +55,7 @@ cp -r skills/graphify ~/.claude/skills/graphify
 git clone https://github.com/animeshbasak/SuperAgent
 ln -s $(pwd)/SuperAgent/skills/superagent ~/.claude/skills/superagent
 ln -s $(pwd)/SuperAgent/skills/graphify ~/.claude/skills/graphify
+cp SuperAgent/agents/superagent-brain.md ~/.claude/agents/superagent-brain.md
 ```
 
 Also install graphify CLI tool:
