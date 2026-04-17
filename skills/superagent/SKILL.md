@@ -1,11 +1,13 @@
 ---
 name: superagent
-description: Use when starting any session or complex task — master routing skill that activates the right combination of skills for the job. Use when user says "superagent", "activate all agents", "full power mode", or when facing a complex multi-phase task requiring planning + execution + review.
+description: Use when starting any session or complex task — master routing skill that activates the right combination of skills. Use when user says "superagent", "activate all agents", "full power mode", or when facing any multi-phase task. Also auto-routes via superagent-brain agent.
 ---
 
 # Superagent
 
-Master orchestrator. Routes every task to the optimal skill stack. Invoke this FIRST, then chain the relevant skills below.
+Master orchestrator. Routes every task to the optimal skill stack. Invoke FIRST, then chain skills below.
+
+---
 
 ## Skill Roster
 
@@ -51,30 +53,46 @@ Master orchestrator. Routes every task to the optimal skill stack. Invoke this F
 | `claude-mem:timeline-report` | Project history narrative |
 
 #### Graphify (Built-in)
-Transform any folder (code, docs, PDFs, images, videos) into a queryable knowledge graph. 71.5x token reduction per query vs raw file reads.
+Transform any folder (code, docs, PDFs, images, videos) into a queryable knowledge graph. 71.5x token reduction per query.
 
 **Install:** `pip install graphifyy && graphify install`
 
 | Task | Command |
 |------|---------|
 | Build graph | `/graphify .` or `/graphify ./src` |
-| Query relationships | `/graphify query "what connects X to Y?"` |
-| Find path between nodes | `/graphify path "NodeA" "NodeB"` |
-| Add remote content | `/graphify add https://arxiv.org/abs/...` |
+| Query | `/graphify query "what connects X to Y?"` |
+| Find path | `/graphify path "NodeA" "NodeB"` |
+| Add remote | `/graphify add https://arxiv.org/abs/...` |
 | Watch mode | `/graphify ./src --watch` |
 | Export | `--neo4j`, `--wiki`, `--graphml`, `--svg` |
 
-**Output:** `GRAPH_REPORT.md` (god nodes + surprising connections), `graph.json` (persistent, SHA256 cached), interactive HTML.
+Outputs: `GRAPH_REPORT.md`, `graph.json` (SHA256 cached), interactive HTML.
+Tags: `EXTRACTED` (direct), `INFERRED` (confidence scored), `AMBIGUOUS` (flagged).
+Privacy: code = local AST, audio/video = local Whisper, docs = your API key.
 
-**Relationship tags:** `EXTRACTED` (direct), `INFERRED` (confidence scored), `AMBIGUOUS` (flagged).
+#### MemPalace (Built-in)
+Local-first AI memory system. 96.6% retrieval accuracy (R@5 on LongMemEval). No API key needed.
 
-**When to use graphify vs smart-explore:**
-- Cross-modal (code + docs + papers + video) → graphify
-- Persistent queryable graph across sessions → graphify
-- Quick AST/symbol search → `claude-mem:smart-explore`
-- One-off grep → `Grep` directly
+**Install:** `pip install mempalace`
 
-**Privacy:** Code = local AST only. Audio/video = local Whisper. Docs/images = sent to your API key.
+| Task | Command |
+|------|---------|
+| Init for project | `mempalace init ~/projects/myapp` |
+| Index project files | `mempalace mine ~/projects/myapp` |
+| Index conversations | `mempalace mine ~/chats/ --mode convos` |
+| Search memory | `mempalace search "query text"` |
+| Load context for new session | `mempalace wake-up` |
+
+Architecture: conversations → **Wings** (people/projects) → **Rooms** (topics) → **Drawers** (verbatim content). Knowledge graph backed by SQLite with temporal validity windows.
+
+MCP: 29 tools covering palace reads/writes, knowledge-graph ops, cross-wing navigation, drawer management, agent diaries.
+
+Auto-save hooks: periodic saving + pre-compression context preservation.
+
+**When to use MemPalace vs claude-mem:**
+- Verbatim conversation history retrieval → MemPalace
+- Cross-session project observations → `claude-mem:mem-search`
+- AST-level code exploration → `claude-mem:smart-explore`
 
 ### UI/UX
 | Skill | Trigger |
@@ -92,165 +110,241 @@ Transform any folder (code, docs, PDFs, images, videos) into a queryable knowled
 ### Communication
 | Skill | Trigger |
 |-------|---------|
-| `caveman:caveman` | Token reduction mode (invoke /caveman) |
+| `caveman:caveman` | Token reduction mode |
 | `caveman:caveman-commit` | Compressed commit messages |
 | `caveman:caveman-review` | Compressed PR review comments |
+
+---
 
 ## Master Decision Flow
 
 ```
 Task received
-  ├── Creative / new feature? → brainstorming → writing-plans → executing-plans
-  ├── Bug / failure? → systematic-debugging → TDD fix → verification-before-completion
-  ├── Multi-task independent? → dispatching-parallel-agents → subagent-driven-development
-  ├── Codebase exploration? → smart-explore or graphify → mem-search for prior work
-  ├── UI work? → ui-ux-pro-max → TDD → verification-before-completion
-  ├── Ready to ship? → requesting-code-review → finishing-a-development-branch
-  └── Past context needed? → mem-search → knowledge-agent
+  ├── Creative / new feature?  → brainstorming → writing-plans → TDD → executing-plans
+  ├── Bug / failure?           → systematic-debugging → TDD → verification
+  ├── 2+ independent tasks?    → dispatching-parallel-agents → subagent-driven-development
+  ├── Explore codebase?        → smart-explore or graphify → mem-search
+  ├── Past memory needed?      → mempalace search → claude-mem:mem-search
+  ├── UI work?                 → ui-ux-pro-max → TDD → verification
+  ├── Ready to ship?           → requesting-code-review → finishing-a-development-branch
+  └── Need prior context?      → mem-search → knowledge-agent
 ```
-
-## Activation Sequence
-
-When invoked:
-1. Read this skill
-2. Identify which phase the task is in (plan / execute / review / explore)
-3. Invoke the matching skill(s) from the roster above
-4. Chain: plan → execute → verify — never skip verify
 
 ---
 
-## Boris Cherny Best Practices (Claude Code Creator)
+## Official Built-in Agents (5)
+
+| Agent | Model | Description |
+|-------|-------|-------------|
+| `general-purpose` | inherit | Complex multi-step tasks — default for research and autonomous work |
+| `Explore` | haiku | Fast read-only codebase search — no Write/Edit tools |
+| `Plan` | inherit | Pre-planning research in plan mode |
+| `statusline-setup` | sonnet | Configures status line setting |
+| `claude-code-guide` | haiku | Answers Claude Code / API questions |
+
+## Official Built-in Skills (5)
+
+| Skill | Description |
+|-------|-------------|
+| `simplify` | Review changed code for reuse, quality, efficiency |
+| `batch` | Run commands across multiple files in bulk |
+| `debug` | Debug failing commands or code |
+| `loop` | Run prompt/command on recurring interval (up to 3 days) |
+| `claude-api` | Build apps with Claude API / Anthropic SDK |
+
+## Key Slash Commands Reference
+
+| Category | Commands |
+|----------|---------|
+| Session | `/plan`, `/compact [hint]`, `/rewind`, `/clear`, `/branch`, `/btw <q>`, `/resume`, `/focus` |
+| Model | `/model`, `/effort [low\|medium\|high\|max]`, `/fast` |
+| Config | `/permissions`, `/hooks`, `/statusline`, `/keybindings`, `/config` |
+| Extensions | `/plugin`, `/agents`, `/skills`, `/mcp` |
+| Remote | `/schedule`, `/loop`, `/teleport`, `/remote-control`, `/autofix-pr` |
+| Project | `/init`, `/diff`, `/security-review`, `/review` |
+| Debug | `/doctor`, `/context`, `/cost`, `/insights` |
+| Export | `/copy`, `/export` |
+
+## Subagent Frontmatter Fields (16)
+
+Key fields for `.claude/agents/*.md`:
+- `name`, `description` (use "PROACTIVELY" for auto-invocation)
+- `tools` — allowlist, supports `Agent(agent_type)` syntax
+- `model` — `haiku`, `sonnet`, `opus`, or `inherit`
+- `permissionMode` — `default`, `acceptEdits`, `auto`, `bypassPermissions`, `plan`
+- `skills` — list of skills preloaded into agent at startup
+- `memory` — `user`, `project`, or `local`
+- `isolation` — `"worktree"` for temporary git worktree
+- `effort` — `low`, `medium`, `high`, `max`
+- `background` — `true` to always run as background task
+- `color` — `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan`
+- `hooks`, `mcpServers`, `maxTurns`, `disallowedTools`, `permissionMode`
+
+## Skill Frontmatter Fields (14)
+
+Key fields for `SKILL.md`:
+- `name`, `description`, `when_to_use`, `argument-hint`
+- `context: fork` — run in isolated subagent context
+- `model`, `effort`, `allowed-tools`, `hooks`
+- `paths` — glob patterns limiting when skill auto-activates
+- `user-invocable: false` — hide from `/` menu (background knowledge only)
+- `disable-model-invocation: true` — prevent auto-invocation
+
+## MCP Servers (Top Daily-Use)
+
+| Server | Purpose |
+|--------|---------|
+| Context7 | Up-to-date library docs — prevents hallucinated APIs |
+| Playwright | Browser automation — implement, test, verify UI autonomously |
+| Claude in Chrome | Real Chrome browser — inspect console, network, DOM |
+| DeepWiki | Structured docs for any GitHub repo |
+| Excalidraw | Architecture diagrams from prompts |
+
+Pattern: Research (Context7/DeepWiki) → Debug (Playwright/Chrome) → Document (Excalidraw)
+
+---
+
+## Best Practices — Boris Cherny (Claude Code Creator)
 
 ### Parallelism
-- Run 5+ Claudes in parallel in terminal tabs (numbered 1–5)
-- Use git worktrees (`claude -w`) for parallel work in same repo — the single biggest productivity unlock
-- Use `claude.ai/code` web sessions alongside local for even more parallelism
-- Dozens of parallel sessions with worktrees is normal at the Claude Code team level
+- Run 5+ Claudes in parallel, numbered terminal tabs 1–5
+- Use git worktrees (`claude -w`) — **single biggest productivity unlock**
+- Use `claude.ai/code` web sessions alongside local for more parallelism
+- Dozens of parallel worktree sessions is normal at the Claude Code team level
+- `claude --teleport` / `/teleport` — pull cloud session to local terminal
+- `/remote-control` — control local session from phone/web
 
 ### Planning
 - Start every complex task in **Plan Mode** (Shift+Tab twice)
-- Pour energy into the plan so Claude can 1-shot implementation
-- Have one Claude write the plan, a second Claude review it as a staff engineer
-- Switch back to plan mode the moment something goes sideways — don't keep pushing
-- Use plan mode for verification steps too, not just build steps
+- Pour energy into the plan → Claude can 1-shot implementation
+- One Claude writes plan, a second reviews it as staff engineer
+- Moment something goes sideways → switch back to plan mode immediately
+- Use `/ultraplan <prompt>` for complex specs — review in browser, execute remotely
 
 ### CLAUDE.md
-- After every correction: "Update your CLAUDE.md so you don't make that mistake again"
-- Share one CLAUDE.md per repo, check into git, have whole team contribute weekly
+- After every correction: *"Update your CLAUDE.md so you don't make that mistake again"*
+- One shared `CLAUDE.md` per repo — check into git, whole team contributes weekly
 - Tag `@claude` on PRs to update CLAUDE.md as part of code review
-- Keep CLAUDE.md under 200 lines per file for reliable adherence
-- Ruthlessly edit until Claude's mistake rate measurably drops
-- Use `.claude/rules/` for larger instruction sets
+- Keep under 200 lines per file; use `.claude/rules/` for larger instruction sets
+- Global CLAUDE.md at `~/.claude/CLAUDE.md` applies to ALL Claude sessions
+- Ruthlessly edit until mistake rate measurably drops
 
 ### Skills & Commands
-- If you do something >1x/day, turn it into a skill or command
-- Build `/techdebt` slash command — run at end of every session to kill duplicated code
-- Build `/commit-push-pr` — commit, push, open PR in one command
-- Build `/go` — test end-to-end → run `/simplify` → put up PR
-- Create analytics skills (bq, SQL) — commit to codebase for whole team
-- Reuse skills across every project by committing them to git
+- If you do something >1x/day → turn it into a skill or command
+- `/techdebt` — run at end of every session to kill duplicated code
+- `/commit-push-pr` — commit, push, open PR in one command
+- `/go` — test end-to-end → `/simplify` → put up PR
+- Build analytics skills (bq, SQL) and commit to codebase for whole team
+- Turn any workflow into a skill + loop
 
 ### Subagents
-- Append "use subagents" to any request for more compute on the problem
+- Append "use subagents" to any request for more compute
 - Offload tasks to subagents to keep main context clean
-- Route permission requests to Opus via hook — auto-approve safe ones
-- Build: `code-simplifier`, `verify-app`, `code-reviewer` agents as standard
-- Subagents **cannot** invoke other subagents via bash — use the Agent tool instead
+- Subagents **cannot** invoke other subagents via bash — use Agent tool
+- Route permission requests to Opus via hook → auto-approve safe ones
+- Standard subagent set: `code-simplifier`, `verify-app`, `code-reviewer`
+- Multiple uncorrelated context windows → better results (separate review finds bugs the author misses)
 
-### Verification (Most Important)
-- Give Claude a way to verify its work — 2-3x quality improvement
-- Backend: have Claude run server/service to test end-to-end
-- Frontend: use Chrome extension so Claude controls the browser
-- Desktop apps: use Computer Use
-- For long tasks: use a background agent to verify when done, or a Stop hook
-- Claude tests every single change before shipping
+### Verification (Most Important Rule)
+- Give Claude a way to verify its work → **2-3x quality improvement**
+- Backend: run server/service to test end-to-end
+- Frontend: Chrome extension → Claude controls the browser
+- Desktop: Computer Use
+- Long tasks: background agent to verify when done, or Stop hook
+- Prompt pattern: `Claude do X /go` where `/go` tests → simplify → PR
 
-### Context Management
-- Sessions degrade around 300-400k tokens
-- Use `/compact` with hints rather than auto-compaction
-- Use `/rewind` instead of corrections mid-session
-- Manual `/compact` at ~50% context usage
-- Use `/clear` when switching tasks entirely
-- Use subagents to isolate intermediate work and keep main context clean
+### Context Management (Thariq's Framework)
+Context rot starts ~300-400k tokens (1M window). Every turn is a branching point:
+
+| Situation | Action | Why |
+|-----------|--------|-----|
+| Same task, context still relevant | Continue | Everything load-bearing |
+| Claude went wrong path | `/rewind` (Esc Esc) | Keep file reads, drop failed attempt |
+| Mid-task, session bloated | `/compact <hint>` | Claude decides what mattered |
+| New task entirely | `/clear` | Zero rot, you control what carries forward |
+| Next step = lots of intermediate output | Subagent | Only result returns to parent |
+
+- **Rewind beats correcting** — "no try B" keeps failed attempt in context; rewind drops it
+- **Compact vs fresh**: compact = Claude decides (lossy, easy); fresh = you decide (exact, effort)
+- Bad compacts happen when model can't predict next direction → compact proactively with a hint
+- Subagent mental test: "will I need this tool output again, or just the conclusion?"
 
 ### Hooks
-- `PostToolUse` → auto-format code after every write/edit
-- `SessionStart` → dynamically load context each session start
-- `PreToolUse` → log every bash command the model runs
+```json
+"PostToolUse": [{ "matcher": "Write|Edit", "hooks": [{ "type": "command", "command": "bun run format || true" }] }]
+```
+- `SessionStart` → dynamically load context
+- `PreToolUse` → log every bash command
 - `PermissionRequest` → route to WhatsApp/Slack for approve/deny
 - `Stop` → poke Claude to keep going automatically
 
-### Permissions
+### Permissions & Auto Mode
 - Never use `--dangerously-skip-permissions`
-- Use `/permissions` to pre-allow safe bash commands
-- Check permissions into `.claude/settings.json` for team sharing
+- `/permissions` → pre-allow safe bash commands → check into `settings.json`
 - Full wildcard syntax: `Bash(bun run *)`, `Edit(/docs/**)`
-- Use **Auto Mode** (Shift+Tab cycle) for Opus 4.7 — model-based classifier auto-approves safe commands
+- **Auto Mode** (Shift+Tab cycle): model-based classifier auto-approves safe commands
+- `/fewer-permission-prompts` skill → scans history, recommends allowlist additions
 
 ### Loops & Scheduling
 - `/loop 5m /babysit` — auto-address code review, auto-rebase, shepherd PRs
-- `/loop 30m /slack-feedback` — auto-PRs for Slack feedback
+- `/loop 30m /slack-feedback` — auto-PRs from Slack feedback
 - `/loop 1h /pr-pruner` — close stale PRs
-- `/schedule` — cloud-based routines running even when machine is offline
-- Turn any workflow into a skill + loop
+- `/schedule` — cloud routines running when machine is offline (up to 7 days)
 
 ### Model Selection
-- Use Opus with thinking for everything (Boris's personal default)
-- Bigger/slower but better tool use → almost always faster overall due to less steering
-- Opus 4.7: use adaptive thinking via effort slider (low→max)
-- Lower effort = faster/cheaper; higher effort = maximum intelligence
-- High effort for everything is Boris's preference
+- Opus with thinking for everything — bigger/slower but better tool use → faster overall
+- Opus 4.7: adaptive thinking via effort slider (low → max)
+- Boris's default: high effort for everything
+- `/model` to change; `/effort [low|medium|high|max]` to tune
 
 ### Power Features
-- `/btw` — ask side questions without interrupting agent's current task
-- `/branch` or `claude --resume <id> --fork-session` — fork a session
+- `/btw <question>` — side question without interrupting agent
+- `/branch` — fork session at current point
 - `/batch` — fan out massive changesets
-- `/teleport` — pull cloud session down to local terminal
-- `/remote-control` — control local session from phone/web
-- `/focus` — hide intermediate work, focus on final result only
-- `/loop` + `/schedule` — two most powerful features for automation
-- Recaps — short summaries of what agent did (disable in `/config` if unwanted)
+- `/focus` — hide intermediate work, see only final result
+- Recaps — short summaries of what agent did (disable in `/config`)
+- Voice dictation — 3x faster than typing (fn×2 on macOS)
 
 ### Git Practices
-- Keep PRs small (median 118 lines)
-- Use squash merging for clean history
-- Separate commits per file — never bundle multiple files in one commit
+- PRs: median 118 lines, squash merge for clean history
+- Separate commits per file — never bundle multiple files
 - Use worktrees for feature isolation
 
 ### Prompting
 - "Grill me on these changes and don't make a PR until I pass your test"
-- "Prove to me this works" — have Claude diff main vs feature branch
+- "Prove to me this works" — diff main vs feature branch
 - "Knowing everything you know now, scrap this and implement the elegant solution"
 - "Go fix the failing CI tests" — don't micromanage how
-- Use voice dictation — 3x faster than typing, prompts get more detailed
-- Prototype 20-30 versions rather than write detailed PRDs
 
 ### MCP & Tools
-- Enable Slack MCP: paste bug thread and say "fix" — zero context switching
-- Use `bq` CLI for analytics — build a BigQuery skill for whole team
-- Use Chrome extension every time doing web/frontend work
-- Point Claude at docker logs for distributed systems debugging
+- Slack MCP: paste bug thread → say "fix" → zero context switching
+- BigQuery skill: no SQL in months — Claude handles it all
+- Chrome extension: essential for every frontend task
+- Docker logs → point Claude at them for distributed systems debugging
 
-### Terminal Setup
-- Use Ghostty (synchronized rendering, 24-bit color, proper unicode)
-- `/statusline` — always shows context usage + git branch
-- Color-code and name terminal tabs, one per task/worktree
-- Enable shift+enter for newlines via `/terminal-setup`
-- Use tmux for multi-session management
+### Settings Hierarchy
+| Priority | Location | Scope |
+|----------|----------|-------|
+| 1 | Managed settings | Organization (IT-enforced) |
+| 2 | CLI arguments | Session only |
+| 3 | `.claude/settings.local.json` | Personal project (git-ignored) |
+| 4 | `.claude/settings.json` | Team-shared |
+| 5 | `~/.claude/settings.json` | Global personal |
+
+### CLAUDE.md Loading in Monorepos
+- **Ancestor loading** (upward) → loads at startup
+- **Descendant loading** (downward) → lazy, only when files read in that dir
+- **Siblings never load** — frontend CLAUDE.md ≠ loaded when in backend/
+- Root CLAUDE.md = shared conventions; component CLAUDE.md = specific patterns
+- `CLAUDE.local.md` → personal preferences, gitignore it
 
 ---
 
-## Priority Order
-
-1. User's explicit instructions (CLAUDE.md)
-2. Skill stack from this router
-3. Default system behavior
-
 ## Non-Negotiables
 
-- NEVER skip `verification-before-completion` before claiming done
-- NEVER skip `systematic-debugging` before proposing fixes
-- NEVER skip `brainstorming` before creative/feature work
-- ALWAYS invoke `TDD` before writing implementation code
+- NEVER skip `verification-before-completion` on build/fix tasks
+- NEVER skip `systematic-debugging` when a bug is mentioned
+- NEVER start implementing without `brainstorming` or an existing plan
 - NEVER use `--dangerously-skip-permissions`
 - ALWAYS give Claude a way to verify its work
+- ALWAYS rewind instead of correcting on failed paths
