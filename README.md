@@ -1,136 +1,157 @@
 # SuperAgent for Claude Code
 
-One command. Full power. Everything auto-initialized.
+> What if every Claude Code session started already knowing your codebase, your past decisions, and exactly which expert to call?
 
 ```bash
 git clone https://github.com/animeshbasak/SuperAgent
 bash SuperAgent/install.sh
 ```
 
-Restart Claude Code, type `superagent`. Done.
+One command. Restart Claude Code. Type `superagent`. That's it.
 
 ---
 
-## What Gets Installed
+## The problem with Claude Code out of the box
 
-| Tool | Type | Purpose |
-|------|------|---------|
-| **superagent** | Claude plugin | Master orchestrator — routes tasks to optimal skill chain |
-| **superpowers** | Claude plugin | 20+ workflow skills: TDD, planning, debugging, reviews |
-| **caveman** | Claude plugin | ~75% token reduction mode |
-| **claude-mem** | Claude plugin | Cross-session memory + AST code search |
-| **ui-ux-pro-max** | Claude plugin | Frontend design intelligence (50+ styles, 161 palettes) |
-| **graphify** | Python CLI | 71.5x token reduction — codebase knowledge graph |
-| **mempalace** | Python CLI | 96.6% retrieval accuracy — local AI memory, no API key |
+Every session, you re-explain the same codebase. Claude reads 40 files to answer one question. It forgets what you decided last Tuesday. It dives into code before you've agreed on a plan. It says "done" when it isn't.
 
-All Python tools are installed via **pipx** (works on macOS system Python). If pipx is missing, it's auto-installed via Homebrew.
-
-**Auto-initialized on install:**
-- `mempalace init ~/.claude --yes` + `mempalace mine ~/.claude` — indexes your Claude config
-- `graphify update ~/.claude/skills` — builds knowledge graph of all installed skills
+You're losing hours. And tokens.
 
 ---
 
-## Usage
+## What SuperAgent adds
 
-After restart, activate with any of:
-- `superagent` — full activation
-- `activate all agents` — alias
-- `full power mode` — alias
+**A routing brain** — analyzes every task and automatically activates the right skill chain. "Fix this bug" triggers systematic debugging → TDD → verification, in that order, every time.
 
-### Session Startup (automatic on activation)
+**A knowledge graph** — `graphify` indexes your entire codebase into a queryable graph. One query replaces reading 71 files. Your real compression ratio — measured from *your* codebase, not a benchmark — is tracked and shown in your statusline.
 
-```bash
-mempalace wake-up          # loads cross-session memory
-graphify query "<question>" # query the knowledge graph
+**A memory system** — `mempalace` stores cross-session context locally. No API key. 96.6% retrieval accuracy. Claude walks into your project already knowing what matters.
+
+**20+ expert skills** — TDD, planning, systematic debugging, parallel agents, security review, code quality, UI/UX design intelligence, and more. Each one enforces discipline you'd otherwise skip at 11pm.
+
+**A token savings badge** — your statusline shows exactly how much context you've avoided loading, measured from your actual index:
+
+```
+[SA: ~231k saved | 48x]
 ```
 
-### Index a new project
+---
+
+## Install
+
+```bash
+git clone https://github.com/animeshbasak/SuperAgent
+bash SuperAgent/install.sh
+```
+
+**What runs automatically:**
+- Installs 5 Claude plugins + 2 Python tools (via pipx, auto-installed if missing)
+- Indexes `~/.claude` into mempalace
+- Builds graphify knowledge graph of all installed skills
+- Wires the token savings tracker into your statusline
+- Calibrates compression ratio from your actual codebase
+
+**After install:** restart Claude Code, type `superagent`.
+
+**Requirements:** Claude Code CLI, Node.js 18+, macOS/Linux
+
+---
+
+## How it works
+
+Type `superagent` (or start any build/fix/review task). The routing brain reads your intent and activates the right stack:
+
+| Intent | Skill chain activated |
+|--------|----------------------|
+| "build X" / "add feature" | brainstorming → writing-plans → TDD → verification |
+| "fix bug" / "broken" | systematic-debugging → TDD → verification |
+| "understand codebase" | graphify query → smart-explore |
+| "ship" / "PR" / "done" | verification → finishing-branch |
+| "design" / "UI" | ui-ux-pro-max → TDD → verification |
+| "did we solve this?" | mempalace search → mem-search |
+
+No configuration. No manual skill selection. It just routes.
+
+---
+
+## Token savings tracker
+
+After running `graphify update` on your project, SuperAgent measures your real compression ratio and starts tracking:
+
+```
+$ /token-stats
+
+SuperAgent Token Stats — /your/project
+──────────────────────────────────────────────
+Compression ratio : 48.3x  (your codebase, measured 2026-04-17)
+──────────────────────────────────────────────
+Lifetime
+  Graphify queries  : 47      → 198k tokens saved
+  Mempalace hits    : 23      → ~31k tokens saved (estimate)
+  Total saved       : ~229k tokens
+
+Last 5 sessions
+  Date          Graphify    Mempalace   Saved
+  2026-04-17    12          4           ~58k
+  2026-04-16    8           2           ~38k
+  2026-04-15    15          6           ~71k
+──────────────────────────────────────────────
+```
+
+The ratio is yours — measured from your actual index, not the 71.5x benchmark number. Your statusline shows it live.
+
+---
+
+## What's installed
+
+| Tool | Purpose |
+|------|---------|
+| **superagent** | Routing brain — activates this whole system |
+| **superpowers** | 20+ workflow skills (TDD, planning, debugging, reviews) |
+| **caveman** | ~75% token reduction mode for terse sessions |
+| **claude-mem** | Cross-session memory + AST-level code search |
+| **ui-ux-pro-max** | Frontend design intelligence (50+ styles, 161 palettes) |
+| **graphify** | Codebase knowledge graph, token-efficient queries |
+| **mempalace** | Local-first AI memory, no API key required |
+
+---
+
+## Index your project
 
 ```bash
 cd ~/my-project
-mempalace init . --yes && mempalace mine .
-graphify update ./src
+graphify update ./src          # build knowledge graph
+mempalace init . --yes && mempalace mine .   # index for memory
+```
+
+Then in Claude Code:
+
+```
+graphify query "how does authentication work?"
+mempalace search "auth decisions"
 ```
 
 ---
 
-## Skill Roster
-
-### Planning
-| Skill | When |
-|-------|------|
-| `superpowers:brainstorming` | Before any new feature |
-| `superpowers:writing-plans` | Have spec, need multi-step plan |
-| `claude-mem:make-plan` | Phased plan with doc discovery |
-
-### Execution
-| Skill | When |
-|-------|------|
-| `superpowers:test-driven-development` | Before writing ANY code |
-| `superpowers:systematic-debugging` | Any bug or test failure |
-| `superpowers:verification-before-completion` | Before claiming done |
-| `superpowers:dispatching-parallel-agents` | 2+ independent tasks |
-
-### Code Review
-| Skill | When |
-|-------|------|
-| `superpowers:requesting-code-review` | Before merging |
-| `superpowers:receiving-code-review` | Got PR feedback |
-| `simplify` | Post-implementation quality pass |
-| `security-review` | Security audit |
-
-### Codebase Intelligence
-| Skill | When |
-|-------|------|
-| `claude-mem:smart-explore` | Token-efficient AST search |
-| `claude-mem:mem-search` | "Did we solve this before?" |
-| `graphify query "..."` | Understand codebase structure |
-
----
-
-## Global Rules (auto-applied every session)
-
-- Plan Mode before every complex task
-- Always give Claude a way to verify its work (2-3x quality)
-- Never `--dangerously-skip-permissions` — use `/permissions` allowlists
-- `/rewind` instead of correcting on failed paths
-- `/compact <hint>` at ~50% context, not auto-compaction
-
----
-
-## Requirements
-
-- [Claude Code CLI](https://claude.ai/code)
-- Node.js 18+
-- macOS/Linux (Homebrew recommended on macOS for pipx)
-
----
-
-## Manual Python Install (if brew unavailable)
+## Manual Python install (if Homebrew unavailable)
 
 ```bash
-# Option A — pipx (recommended)
 pip install pipx && pipx ensurepath
 pipx install graphifyy
 pipx install mempalace
-
-# Option B — uv
-uv tool install graphifyy
-uv tool install mempalace
-```
-
-Then initialize:
-```bash
 mempalace init ~/.claude --yes && mempalace mine ~/.claude
 cd ~/.claude && graphify update skills
 ```
 
 ---
 
-## Docs
+## Links
 
-- [graphify](https://github.com/animeshbasak/graphifyy)
-- [mempalace](https://github.com/animeshbasak/mempalace)
-- [superpowers](https://github.com/claude-plugins-official/superpowers)
-- [claude-mem](https://github.com/thedotmack/claude-mem)
+- [graphify](https://github.com/animeshbasak/graphifyy) — knowledge graph engine
+- [mempalace](https://github.com/animeshbasak/mempalace) — local AI memory
+- [superpowers](https://github.com/claude-plugins-official/superpowers) — 20+ workflow skills
+- [claude-mem](https://github.com/thedotmack/claude-mem) — cross-session observations
+
+---
+
+If this saved you time, star it. If it saved you tokens, `/token-stats` will tell you exactly how many.
