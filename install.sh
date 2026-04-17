@@ -44,6 +44,7 @@ let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
 cfg.extraKnownMarketplaces = cfg.extraKnownMarketplaces || {};
 Object.assign(cfg.extraKnownMarketplaces, {
+  animeshbasak:          { source: { source: 'github', repo: 'animeshbasak/SuperAgent' } },
   caveman:               { source: { source: 'github', repo: 'JuliusBrussee/caveman' } },
   thedotmack:            { source: { source: 'github', repo: 'thedotmack/claude-mem' } },
   'ui-ux-pro-max-skill': { source: { source: 'github', repo: 'nextlevelbuilder/ui-ux-pro-max-skill' } },

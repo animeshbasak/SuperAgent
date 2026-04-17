@@ -246,45 +246,52 @@ Add to `~/.claude/settings.json`:
 
 ## Publishing to the Claude Marketplace
 
-### Option A: Community Marketplace (GitHub-based) — Recommended
+### Option A: Community Marketplace (GitHub-based) — Live Now
 
-Anyone can create a Claude Code plugin marketplace using a GitHub repo with this structure:
+SuperAgent is already published as a community marketplace plugin. Users install with two commands:
+
+```bash
+# 1. Register the marketplace (one-time)
+# Add to ~/.claude/settings.json → extraKnownMarketplaces:
+#   "animeshbasak": { "source": { "source": "github", "repo": "animeshbasak/SuperAgent" } }
+
+# 2. Install
+claude plugin install superagent@animeshbasak
+```
+
+Or just use the installer which handles everything:
+```bash
+bash <(curl -s https://raw.githubusercontent.com/animeshbasak/SuperAgent/main/install.sh)
+```
+
+**How it works — the required files in your repo:**
 
 ```
-your-marketplace-repo/
-  manifest.json          ← marketplace metadata
-  plugins/
+SuperAgent/
+  .claude-plugin/
+    plugin.json       ← plugin metadata (name, version, author)
+    marketplace.json  ← marketplace definition
+  skills/
     superagent/
-      manifest.json      ← plugin metadata
-      SKILL.md           ← skill content
-      agents/            ← agent files
+      SKILL.md        ← skill content (auto-discovered)
+  agents/
+    superagent-brain.md  ← agent files (auto-discovered)
 ```
 
-**`manifest.json` (marketplace root):**
+**`.claude-plugin/plugin.json`** (the key file):
 ```json
 {
-  "name": "superagent-marketplace",
-  "description": "SuperAgent and related AI productivity plugins",
+  "name": "superagent",
+  "description": "Master orchestrator for Claude Code",
   "version": "1.0.0",
-  "plugins": {
-    "superagent": {
-      "description": "Master orchestrator for Claude Code",
-      "versions": {
-        "latest": "plugins/superagent"
-      }
-    }
-  }
+  "author": { "name": "Your Name", "email": "you@email.com" },
+  "homepage": "https://github.com/you/your-plugin",
+  "repository": "https://github.com/you/your-plugin",
+  "license": "MIT"
 }
 ```
 
-**Users install via:**
-```bash
-# Add your marketplace to their settings.json
-claude plugin marketplace add yourgithubuser/your-marketplace-repo
-
-# Then install
-claude plugin install superagent@yourgithubuser
-```
+**To create your own plugin marketplace** — same pattern, just fork any existing plugin repo, add `.claude-plugin/plugin.json`, and share the install command.
 
 ### Option B: Official Claude Marketplace
 
