@@ -21,7 +21,7 @@ fail() { echo -e "${RED}✗ $*${NC}" >&2; exit 1; }
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║      Superagent Installer v1.0       ║${NC}"
+echo -e "${CYAN}║      Superagent Installer v1.1       ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════╝${NC}"
 echo ""
 
@@ -158,6 +158,31 @@ mkdir -p "$AGENTS_DIR"
 if [[ -f "$SCRIPT_DIR/agents/superagent-brain.md" && ! -f "$AGENTS_DIR/superagent-brain.md" ]]; then
   cp "$SCRIPT_DIR/agents/superagent-brain.md" "$AGENTS_DIR/superagent-brain.md"
   ok "superagent-brain agent installed at ~/.claude/agents/"
+fi
+echo ""
+
+# ── Step 5b: Install webgl-craft skill ───────────────────────────────────────
+info "Installing webgl-craft skill (premium WebGL/3D creative web)..."
+
+WEBGL_SKILL_SRC="$SCRIPT_DIR/skills/webgl-craft"
+WEBGL_SKILL_DEST="$CLAUDE_DIR/skills/webgl-craft"
+
+if [[ -d "$WEBGL_SKILL_SRC" ]]; then
+  if [[ ! -d "$WEBGL_SKILL_DEST" ]]; then
+    mkdir -p "$WEBGL_SKILL_DEST/references" "$WEBGL_SKILL_DEST/recipes"
+    cp "$WEBGL_SKILL_SRC/SKILL.md" "$WEBGL_SKILL_DEST/"
+    cp "$WEBGL_SKILL_SRC/references/"*.md "$WEBGL_SKILL_DEST/references/" 2>/dev/null || true
+    cp "$WEBGL_SKILL_SRC/recipes/"*     "$WEBGL_SKILL_DEST/recipes/"     2>/dev/null || true
+    ok "webgl-craft installed at ~/.claude/skills/webgl-craft"
+  else
+    # Update in place — always sync latest files
+    cp "$WEBGL_SKILL_SRC/SKILL.md" "$WEBGL_SKILL_DEST/"
+    cp "$WEBGL_SKILL_SRC/references/"*.md "$WEBGL_SKILL_DEST/references/" 2>/dev/null || true
+    cp "$WEBGL_SKILL_SRC/recipes/"*     "$WEBGL_SKILL_DEST/recipes/"     2>/dev/null || true
+    ok "webgl-craft updated at ~/.claude/skills/webgl-craft"
+  fi
+else
+  warn "webgl-craft source not found in $WEBGL_SKILL_SRC — skipping"
 fi
 echo ""
 
@@ -327,6 +352,7 @@ echo "    ✓ superpowers        — 20+ workflow skills (TDD, planning, debuggi
 echo "    ✓ caveman            — token reduction mode"
 echo "    ✓ claude-mem         — cross-session memory & AST search"
 echo "    ✓ ui-ux-pro-max      — frontend design intelligence"
+echo "    ✓ webgl-craft        — premium WebGL/3D creative web (Awwwards-class techniques)"
 echo "    ✓ graphify           — knowledge graph (auto-indexed ~/.claude/skills)"
 echo "    ✓ mempalace          — cross-session memory (auto-indexed ~/.claude)"
 echo "    ✓ token-stats        — real token savings tracking (statusline + /token-stats)"
