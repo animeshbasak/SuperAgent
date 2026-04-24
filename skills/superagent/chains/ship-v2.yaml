@@ -1,0 +1,8 @@
+name: ship-v2
+description: Full ship pipeline — review, verify, ship.
+steps:
+  - review
+  - verification-before-completion
+  - ship
+on_failure:
+  - investigate

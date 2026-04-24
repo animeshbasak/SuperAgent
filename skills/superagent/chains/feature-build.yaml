@@ -1,0 +1,8 @@
+name: feature-build
+description: Brainstorm → plan → TDD → execute → verify.
+steps:
+  - brainstorming
+  - writing-plans
+  - test-driven-development
+  - executing-plans
+  - verification-before-completion

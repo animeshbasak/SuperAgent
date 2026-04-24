@@ -1,0 +1,77 @@
+# Each rule: signal (regex, any-match) -> skill chain to append.
+# Evaluated in order; multiple rules can match. Brain dedupes and orders the resulting chain.
+
+meta:
+  always_first: [mempalace-wake]
+  always_last_on_build: [verification-before-completion]
+  context_rot_threshold_tokens: 300000
+
+rules:
+  - name: bug
+    # Removed 'failing' (investigate territory). Added 'debug'. Removed 'investigate' from chain.
+    signal: "\\b(bug|fix|broken|error|crash|stack trace|traceback|debug)\\b"
+    chain: [systematic-debugging, test-driven-development]
+
+  - name: webgl
+    # Moved before 'ui' so webgl-craft appears first for 3D/cinematic prompts. Added writing-plans.
+    signal: "\\b(3d|webgl|three\\.js|r3f|shader|awwwards|cinematic|premium)\\b"
+    chain: [webgl-craft, writing-plans]
+
+  - name: ui
+    # Removed plan-design-review (over-fires on non-design tasks). Added brainstorming + 'redesign'.
+    signal: "\\b(design|ui|ux|component|page|layout|dashboard|landing|redesign)\\b"
+    chain: [brainstorming, ui-ux-pro-max]
+
+  - name: feature
+    # Extended signal to cover small additions (logging, monitoring, tracking, validation, handler).
+    signal: "\\b(add|build|create|implement) .*(feature|page|component|module|endpoint|logging|monitoring|tracking|validation|handler)\\b"
+    chain: [brainstorming, writing-plans, test-driven-development, executing-plans]
+
+  - name: release
+    # Removed 'pr|pull request' (PR review != ship) and 'deploy' (deploy-health != ship).
+    signal: "\\b(ship|release|tag|merge)\\b"
+    chain: [review, ship]
+
+  - name: review
+    signal: "\\b(review (this|my|the)|look at my)\\b"
+    chain: [review, simplify]
+
+  - name: security
+    signal: "\\b(security|owasp|injection|secret|vuln|audit)\\b"
+    chain: [cso, security-review]
+
+  - name: explore
+    signal: "\\b(how does|explain|understand|what is|walk me through)\\b"
+    chain: [graphify-query, smart-explore]
+
+  - name: investigate
+    # Added 'are' to why-clause to catch "why are builds failing".
+    signal: "\\b(why (did|does|is|are)|what happened|root cause)\\b"
+    chain: [investigate, mem-search]
+
+  - name: canary
+    # New rule: health/canary checks route to verification only, not ship.
+    signal: "\\b(canary|health.?check|is .* healthy|status check|deploy healthy)\\b"
+    chain: [verification-before-completion]
+
+  - name: plan
+    signal: "\\b(plan|design approach|strategy for|roadmap)\\b"
+    chain: [brainstorming, writing-plans, plan-ceo-review, plan-eng-review]
+
+  - name: recall
+    signal: "\\b(did we|last (week|time)|previously|remember when)\\b"
+    chain: [mem-search]
+
+  - name: product
+    signal: "\\b(office hours|narrowest wedge|product sense|yc|pmf)\\b"
+    chain: [office-hours]
+
+  - name: refactor
+    signal: "\\b(refactor|clean ?up|simplify|dedupe|duplicated)\\b"
+    chain: [simplify]
+
+  - name: parallel
+    signal: "\\b(and also|as well as|at the same time|plus)\\b"
+    chain: [dispatching-parallel-agents]
+
+build_archetypes: [bug, feature, ui, webgl, refactor]

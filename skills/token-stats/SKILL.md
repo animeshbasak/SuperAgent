@@ -73,6 +73,17 @@ echo ""
 '
 ```
 
+## Cost report
+
+Also run and include dollar-cost breakdown:
+
+```bash
+superagent-cost today
+superagent-cost week
+```
+
+Shows cost grouped by model (opus / sonnet / haiku) and a model-mix coach note.
+
 ## Test Mode
 
 When `--test` argument is passed, display this hardcoded sample output:

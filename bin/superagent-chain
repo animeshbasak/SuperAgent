@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Usage: superagent-chain <chain-name>
+# Prints the JSON array of steps from the named YAML chain.
+set -euo pipefail
+NAME="${1:?chain required (e.g. ship-v2)}"
+DIR="${SUPERAGENT_CHAINS:-$HOME/.claude/skills/superagent/chains}"
+
+if [[ ! -d "$DIR" ]]; then
+  for candidate in \
+    "$PWD/skills/superagent/chains" \
+    "$(dirname "$0")/../skills/superagent/chains"; do
+    if [[ -d "$candidate" ]]; then
+      DIR="$candidate"
+      break
+    fi
+  done
+fi
+
+FILE="$DIR/$NAME.yaml"
+if [[ ! -f "$FILE" ]]; then
+  echo "no chain: $NAME (looked in $DIR)" >&2
+  exit 1
+fi
+
+command -v yq >/dev/null || { echo "yq required (brew install yq)" >&2; exit 2; }
+yq -o=json '.steps' "$FILE"

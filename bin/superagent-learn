@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Usage: superagent-learn add "<text>" | list | search "<query>"
+set -euo pipefail
+ROOT="$HOME/.superagent/learnings"
+mkdir -p "$ROOT"
+PROJECT_HASH=$(echo -n "$PWD" | shasum -a 256 | cut -c1-12)
+FILE="$ROOT/$PROJECT_HASH.jsonl"
+
+case "${1:-}" in
+  add)
+    TEXT="${2:?text required}"
+    echo "{\"ts\":\"$(date -Iseconds)\",\"project\":\"$PWD\",\"text\":$(jq -Rs . <<<"$TEXT")}" >> "$FILE"
+    echo "recorded"
+    ;;
+  list)
+    [[ -f "$FILE" ]] && jq -r '.ts + " — " + .text' "$FILE" || echo "(none)"
+    ;;
+  search)
+    Q="${2:?query required}"
+    [[ -f "$FILE" ]] && grep -i "$Q" "$FILE" | jq -r '.ts + " — " + .text' || echo "(none)"
+    ;;
+  *) echo "usage: superagent-learn {add|list|search}" ; exit 1 ;;
+esac

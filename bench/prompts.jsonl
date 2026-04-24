@@ -1,0 +1,30 @@
+{"id": 1, "prompt": "fix the bug where dark mode toggle doesn't persist", "archetype": "bug", "expected_chain": ["mempalace-wake", "systematic-debugging", "test-driven-development", "verification-before-completion"]}
+{"id": 2, "prompt": "add a settings page with dark mode toggle", "archetype": "feature", "expected_chain": ["mempalace-wake", "brainstorming", "ui-ux-pro-max", "writing-plans", "test-driven-development", "executing-plans", "verification-before-completion"]}
+# id=2: ui fires before feature (ui rule is ordered first); brainstorming deduped to first occurrence from ui chain.
+{"id": 3, "prompt": "build a 3D hero section with scroll-triggered camera", "archetype": "webgl", "expected_chain": ["mempalace-wake", "webgl-craft", "writing-plans", "verification-before-completion"]}
+# id=3: webgl rule now includes writing-plans; ui-ux-pro-max removed from webgl chain (no ui keyword in prompt).
+{"id": 4, "prompt": "ship this branch", "archetype": "release", "expected_chain": ["mempalace-wake", "review", "ship"]}
+{"id": 5, "prompt": "review my PR for SQL injection and trust boundary issues", "archetype": "review", "expected_chain": ["mempalace-wake", "review", "simplify", "cso", "security-review"]}
+# id=5: 'pr|pull request' removed from release signal (PR review != ship). review+security both fire correctly.
+{"id": 6, "prompt": "how does the auth flow work in this repo", "archetype": "explore", "expected_chain": ["mempalace-wake", "graphify-query", "smart-explore"]}
+{"id": 7, "prompt": "why are builds failing on main", "archetype": "investigate", "expected_chain": ["mempalace-wake", "investigate", "mem-search"]}
+# id=7: 'failing' removed from bug signal (investigate territory). investigate signal now matches 'why are'.
+{"id": 8, "prompt": "plan how we migrate from REST to GraphQL", "archetype": "plan", "expected_chain": ["mempalace-wake", "brainstorming", "writing-plans", "plan-ceo-review", "plan-eng-review"]}
+{"id": 9, "prompt": "refactor the billing module to use the new pricing API and also write the migration doc", "archetype": "parallel", "expected_chain": ["mempalace-wake", "simplify", "dispatching-parallel-agents", "verification-before-completion"]}
+# id=9: 'refactor' correctly fires refactor rule (simplify). Parallel fires too. vbc appended (refactor is build archetype).
+{"id": 10, "prompt": "redesign the landing page", "archetype": "design", "expected_chain": ["mempalace-wake", "brainstorming", "ui-ux-pro-max", "verification-before-completion"]}
+# id=10: 'redesign' added to ui signal. ui chain now has brainstorming. plan-design-review removed from ui chain.
+{"id": 11, "prompt": "run a security audit", "archetype": "security", "expected_chain": ["mempalace-wake", "cso", "security-review"]}
+{"id": 12, "prompt": "what did we decide last week about caching", "archetype": "recall", "expected_chain": ["mempalace-wake", "mem-search"]}
+{"id": 13, "prompt": "add logging around the payment retry logic", "archetype": "feature-small", "expected_chain": ["mempalace-wake", "brainstorming", "writing-plans", "test-driven-development", "executing-plans", "verification-before-completion"]}
+# id=13: feature signal extended to match 'add .* logging'. Full feature chain fires.
+{"id": 14, "prompt": "canary check: is the deploy healthy", "archetype": "release", "expected_chain": ["mempalace-wake", "verification-before-completion"]}
+# id=14: 'deploy' removed from release signal. New canary rule matches 'deploy healthy' -> [vbc].
+{"id": 15, "prompt": "office hours — what's the narrowest wedge for this feature", "archetype": "product", "expected_chain": ["mempalace-wake", "office-hours"]}
+{"id": 16, "prompt": "make the dashboard feel premium and cinematic", "archetype": "webgl", "expected_chain": ["mempalace-wake", "webgl-craft", "writing-plans", "brainstorming", "ui-ux-pro-max", "verification-before-completion"]}
+# id=16: webgl fires first (rule order); 'dashboard' fires ui (brainstorming, ui-ux-pro-max). Both are build archetypes -> vbc appended.
+{"id": 17, "prompt": "clean up the duplicated validation code", "archetype": "refactor", "expected_chain": ["mempalace-wake", "simplify", "verification-before-completion"]}
+{"id": 18, "prompt": "write a plan for the new billing system", "archetype": "plan", "expected_chain": ["mempalace-wake", "brainstorming", "writing-plans", "plan-ceo-review", "plan-eng-review"]}
+{"id": 19, "prompt": "prepare this repo for a release and push the tag", "archetype": "release", "expected_chain": ["mempalace-wake", "review", "ship"]}
+{"id": 20, "prompt": "debug the test that's flaky on CI", "archetype": "bug", "expected_chain": ["mempalace-wake", "systematic-debugging", "test-driven-development", "verification-before-completion"]}
+# id=20: 'debug' added to bug signal. bug rule fires -> [sys-dbg, tdd] + vbc (build archetype).

@@ -5,8 +5,22 @@
 
 STATS="$HOME/.claude/superagent-stats.json"
 
+# Read JSON payload from stdin (Claude Code passes hook context here)
+PAYLOAD=$(cat)
+
 # Dependency check
 command -v jq >/dev/null 2>&1 || { echo "[SA: install jq]"; exit 0; }
+
+# Context-rot gauge (Thariq's 300k threshold)
+CTX_TOKENS=$(echo "$PAYLOAD" | jq -r '.transcript_tokens // empty' 2>/dev/null || echo "")
+CTX_BADGE=""
+if [[ -n "$CTX_TOKENS" && "$CTX_TOKENS" =~ ^[0-9]+$ ]]; then
+  if [[ "$CTX_TOKENS" -gt 300000 ]]; then
+    CTX_BADGE=" ⚠️ctx:${CTX_TOKENS}"
+  elif [[ "$CTX_TOKENS" -gt 100000 ]]; then
+    CTX_BADGE=" ctx:${CTX_TOKENS}"
+  fi
+fi
 
 # Stats file must exist
 [[ -f "$STATS" ]] || { echo "[SA: not calibrated]"; exit 0; }
@@ -40,4 +54,4 @@ fi
 PREFIX=""
 [[ "$MEM_SAVED" -gt 0 ]] && PREFIX="~"
 
-echo "[SA: ${PREFIX}${DISPLAY} saved | ${RATIO}x]"
+echo "[SA: ${PREFIX}${DISPLAY} saved | ${RATIO}x]${CTX_BADGE}"

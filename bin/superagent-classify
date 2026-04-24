@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# superagent-classify — reads a task string, emits JSON {chain, hint}
+# Usage: superagent-classify "task description"
+# Requires: yq (https://github.com/mikefarah/yq) and jq
+
+set -euo pipefail
+
+# ── dependency checks ────────────────────────────────────────────────────────
+command -v yq >/dev/null 2>&1 || { echo "yq required (brew install yq)" >&2; exit 2; }
+command -v jq >/dev/null 2>&1 || { echo "jq required (brew install jq)" >&2; exit 2; }
+command -v python3 >/dev/null 2>&1 || { echo "python3 required" >&2; exit 2; }
+
+# ── argument check ───────────────────────────────────────────────────────────
+if [[ $# -lt 1 ]] || [[ -z "${1:-}" ]]; then
+  echo "Usage: superagent-classify <task>" >&2
+  exit 1
+fi
+
+TASK="$1"
+
+# ── locate rules.yaml (relative to this script) ──────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RULES_FILE="$SCRIPT_DIR/../skills/superagent/brain/rules.yaml"
+
+if [[ ! -f "$RULES_FILE" ]]; then
+  echo "rules.yaml not found at: $RULES_FILE" >&2
+  exit 2
+fi
+
+# ── compute task hash (first 12 chars of sha256) ─────────────────────────────
+if command -v shasum >/dev/null 2>&1; then
+  TASK_HASH=$(printf '%s' "$TASK" | shasum -a 256 | cut -c1-12)
+elif command -v sha256sum >/dev/null 2>&1; then
+  TASK_HASH=$(printf '%s' "$TASK" | sha256sum | cut -c1-12)
+else
+  TASK_HASH=""
+fi
+
+# ── look up history bias from routes.jsonl ───────────────────────────────────
+ROUTES_FILE="${HOME}/.superagent/brain/routes.jsonl"
+HISTORY_HINT="null"
+
+if [[ -n "$TASK_HASH" ]] && [[ -f "$ROUTES_FILE" ]] && [[ -s "$ROUTES_FILE" ]]; then
+  # Use jq to find latest matching entry: same task_hash AND outcome=="done"
+  # On any error (malformed lines, etc.), fall back to null
+  HISTORY_HINT=$(
+    jq -sc '
+      [ .[] | select(.task_hash == "'"$TASK_HASH"'" and .outcome == "done") ]
+      | if length > 0 then last.chain else null end
+    ' "$ROUTES_FILE" 2>/dev/null || echo "null"
+  )
+  # jq -sc on a jsonl file will error on malformed lines; catch that case
+  if [[ -z "$HISTORY_HINT" ]]; then
+    HISTORY_HINT="null"
+  fi
+fi
+
+# ── run classifier via python3 ───────────────────────────────────────────────
+# We pass the YAML content and the task to python3 which does all matching,
+# dedup, and JSON emission. This avoids bash regex edge-cases with word boundaries.
+python3 - "$TASK" "$RULES_FILE" "$HISTORY_HINT" <<'PYEOF'
+import sys
+import json
+import re
+import yaml
+
+task = sys.argv[1]
+rules_file = sys.argv[2]
+history_hint_raw = sys.argv[3]
+
+with open(rules_file) as f:
+    data = yaml.safe_load(f)
+
+rules = data.get("rules", [])
+meta = data.get("meta", {})
+always_first = meta.get("always_first", [])
+always_last_on_build = meta.get("always_last_on_build", [])
+build_archetypes = set(data.get("build_archetypes", []))
+
+# ── classifier algorithm ─────────────────────────────────────────────────────
+chain = list(always_first)
+matched_archetypes = []
+
+for rule in rules:
+    signal = rule.get("signal", "")
+    if re.search(signal, task, re.IGNORECASE):
+        chain.extend(rule.get("chain", []))
+        matched_archetypes.append(rule["name"])
+
+# stable dedup — preserve first-occurrence order
+seen = set()
+deduped = []
+for item in chain:
+    if item not in seen:
+        seen.add(item)
+        deduped.append(item)
+chain = deduped
+
+# append always_last_on_build if any matched rule is a build archetype
+if any(a in build_archetypes for a in matched_archetypes):
+    for item in always_last_on_build:
+        if item not in chain:
+            chain.append(item)
+
+# ── parse history hint ───────────────────────────────────────────────────────
+try:
+    hint = json.loads(history_hint_raw)
+except (json.JSONDecodeError, ValueError):
+    hint = None
+
+result = {"chain": chain, "hint": hint}
+print(json.dumps(result))
+PYEOF

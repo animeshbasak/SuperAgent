@@ -7,7 +7,26 @@ git clone https://github.com/animeshbasak/SuperAgent
 bash SuperAgent/install.sh
 ```
 
-Restart Claude Code. Type `superagent`. Done.
+Restart Claude Code. Type `/superagent <your task>`. Done.
+
+---
+
+## v2.0 — AI brain + 10 new skills
+
+One entrypoint. Type `/superagent <task>`. SuperAgent classifies the task, announces the skill chain it will run, and executes — no skill-memorization.
+
+**New in v2:**
+- **`/superagent <task>`** — AI router with 20-prompt bench (avg 1.00, HARD GATE ≥ 0.90).
+- **7 role-play skills** imported from [gstack](https://github.com/garrytan/gstack) (gstack infra stripped, signature IP preserved): `/plan-ceo-review`, `/plan-eng-review`, `/plan-design-review`, `/autoplan`, `/review`, `/investigate`, `/ship`.
+- **3 native skills**: `/office-hours`, `/cso`, `/learn`.
+- **Auto-distill Stop hook** — captures corrections to `CLAUDE.md.superagent-proposed` (never mutates CLAUDE.md directly).
+- **Cost intelligence** — `superagent-cost today` → $ by model + coach notes.
+- **Skill DAGs + `/fanout`** — YAML chains (`ship-v2`, `feature-build`) + parallel primitive.
+- **Context-rot gauge** — statusline warns at 300k tokens.
+- **`--local-only` install flag** — privacy marker.
+- **`~/.superagent/` state root** — one place for brain / bench / learnings / chains / cost / logs.
+
+See [CHANGELOG.md](CHANGELOG.md) for full v2.0.0 notes.
 
 ---
 

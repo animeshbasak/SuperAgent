@@ -6,6 +6,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# ── Flags ─────────────────────────────────────────────────────────────────────
+LOCAL_ONLY=0
+for a in "$@"; do
+  case "$a" in
+    --local-only) LOCAL_ONLY=1 ;;
+  esac
+done
+export LOCAL_ONLY
+
 CLAUDE_DIR="$HOME/.claude"
 SETTINGS="$CLAUDE_DIR/settings.json"
 PLUGINS_DIR="$CLAUDE_DIR/plugins"
@@ -131,27 +140,8 @@ JSEOF
 ok "All plugins enabled in settings.json"
 echo ""
 
-# ── Step 5: Wire up ~/.claude/skills and ~/.claude/agents ─────────────────────
-info "Linking skill and agent files..."
-
-SKILLS_DIR="$CLAUDE_DIR/skills/superagent"
-if [[ ! -d "$SKILLS_DIR" ]]; then
-  mkdir -p "$CLAUDE_DIR/skills"
-  ln -s "$SCRIPT_DIR/skills/superagent" "$SKILLS_DIR" 2>/dev/null \
-    || cp -r "$SCRIPT_DIR/skills/superagent" "$SKILLS_DIR"
-  ok "Skill linked at ~/.claude/skills/superagent"
-else
-  warn "~/.claude/skills/superagent already exists, skipping"
-fi
-
-TOKEN_STATS_SKILLS_DIR="$CLAUDE_DIR/skills/token-stats"
-if [[ ! -e "$TOKEN_STATS_SKILLS_DIR" ]]; then
-  ln -s "$SCRIPT_DIR/skills/token-stats" "$TOKEN_STATS_SKILLS_DIR" 2>/dev/null \
-    || cp -r "$SCRIPT_DIR/skills/token-stats" "$TOKEN_STATS_SKILLS_DIR"
-  ok "Skill linked at ~/.claude/skills/token-stats"
-else
-  warn "~/.claude/skills/token-stats already exists, skipping"
-fi
+# ── Step 5: Wire up ~/.claude/agents ─────────────────────────────────────────
+info "Linking agent files..."
 
 AGENTS_DIR="$CLAUDE_DIR/agents"
 mkdir -p "$AGENTS_DIR"
@@ -161,29 +151,25 @@ if [[ -f "$SCRIPT_DIR/agents/superagent-brain.md" && ! -f "$AGENTS_DIR/superagen
 fi
 echo ""
 
-# ── Step 5b: Install webgl-craft skill ───────────────────────────────────────
-info "Installing webgl-craft skill (premium WebGL/3D creative web)..."
+# ── Step 6: Link SuperAgent v2 skills into ~/.claude/skills/ ──────────────────
+info "Linking 13 SuperAgent skills..."
 
-WEBGL_SKILL_SRC="$SCRIPT_DIR/skills/webgl-craft"
-WEBGL_SKILL_DEST="$CLAUDE_DIR/skills/webgl-craft"
-
-if [[ -d "$WEBGL_SKILL_SRC" ]]; then
-  if [[ ! -d "$WEBGL_SKILL_DEST" ]]; then
-    mkdir -p "$WEBGL_SKILL_DEST/references" "$WEBGL_SKILL_DEST/recipes"
-    cp "$WEBGL_SKILL_SRC/SKILL.md" "$WEBGL_SKILL_DEST/"
-    cp "$WEBGL_SKILL_SRC/references/"*.md "$WEBGL_SKILL_DEST/references/" 2>/dev/null || true
-    cp "$WEBGL_SKILL_SRC/recipes/"*     "$WEBGL_SKILL_DEST/recipes/"     2>/dev/null || true
-    ok "webgl-craft installed at ~/.claude/skills/webgl-craft"
-  else
-    # Update in place — always sync latest files
-    cp "$WEBGL_SKILL_SRC/SKILL.md" "$WEBGL_SKILL_DEST/"
-    cp "$WEBGL_SKILL_SRC/references/"*.md "$WEBGL_SKILL_DEST/references/" 2>/dev/null || true
-    cp "$WEBGL_SKILL_SRC/recipes/"*     "$WEBGL_SKILL_DEST/recipes/"     2>/dev/null || true
-    ok "webgl-craft updated at ~/.claude/skills/webgl-craft"
+mkdir -p "$HOME/.claude/skills"
+for skill in superagent token-stats webgl-craft plan-ceo-review plan-eng-review plan-design-review autoplan review investigate ship office-hours cso learn; do
+  src="$SCRIPT_DIR/skills/$skill"
+  dst="$HOME/.claude/skills/$skill"
+  if [[ ! -d "$src" ]]; then
+    warn "skip: $skill (not present)"
+    continue
   fi
-else
-  warn "webgl-craft source not found in $WEBGL_SKILL_SRC — skipping"
-fi
+  rm -rf "$dst"
+  if ln -sfn "$src" "$dst" 2>/dev/null; then
+    ok "linked: $skill"
+  else
+    cp -r "$src" "$dst"
+    ok "copied: $skill (symlink unsupported)"
+  fi
+done
 echo ""
 
 # ── Step 6: Configure global CLAUDE.md ───────────────────────────────────────
@@ -340,6 +326,80 @@ else
   warn "Hook scripts not found in $SCRIPT_DIR/hooks/ — skipping tracker install"
 fi
 echo ""
+
+# ── Step 11: Initialize superagent state root ────────────────────────────────
+info "Initializing superagent state root..."
+INIT_SRC="$SCRIPT_DIR/hooks/superagent-state-init.sh"
+if [[ -f "$INIT_SRC" ]]; then
+  bash "$INIT_SRC" \
+    && ok "State root initialized at ~/.superagent/" \
+    || warn "State root init failed — run manually: bash $INIT_SRC"
+else
+  warn "superagent-state-init.sh not found in $SCRIPT_DIR/hooks/ — skipping"
+fi
+echo ""
+
+# ── Step 12: Install SuperAgent CLIs into ~/.local/bin/ ───────────────────────
+info "Installing SuperAgent CLIs..."
+
+for tool in superagent-classify superagent-ship superagent-learn; do
+  src="$SCRIPT_DIR/bin/$tool"
+  dst="$HOME/.local/bin/$tool"
+  if [[ -f "$src" ]]; then
+    mkdir -p "$HOME/.local/bin"
+    cp "$src" "$dst"
+    chmod +x "$dst"
+    ok "bin installed: $tool -> $dst"
+  else
+    warn "bin not found: $tool"
+  fi
+done
+if ! echo "$PATH" | tr ':' '\n' | grep -Fxq "$HOME/.local/bin"; then
+  warn "~/.local/bin is not on PATH — add: export PATH=\"\$HOME/.local/bin:\$PATH\""
+fi
+echo ""
+
+# ── Step 13: Install distill Stop hook (writes CLAUDE.md.superagent-proposed) ──
+info "Installing distill Stop hook..."
+DISTILL_SRC="$SCRIPT_DIR/hooks/superagent-distill.sh"
+if [[ -f "$DISTILL_SRC" ]]; then
+  cp "$DISTILL_SRC" "$CLAUDE_DIR/superagent-distill.sh"
+  chmod +x "$CLAUDE_DIR/superagent-distill.sh"
+  ok "Distill hook installed to ~/.claude/"
+
+  node - <<'JSEOF'
+const fs = require('fs'), path = require('path');
+const file = path.join(process.env.HOME, '.claude', 'settings.json');
+let cfg = {};
+try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+cfg.hooks = cfg.hooks || {};
+cfg.hooks.Stop = cfg.hooks.Stop || [];
+const stopCmd = `bash "${path.join(process.env.HOME, '.claude', 'superagent-distill.sh')}" || true`;
+const alreadyWired = cfg.hooks.Stop.some(h =>
+  h.hooks && h.hooks.some(hh => hh.command && hh.command.includes('superagent-distill'))
+);
+if (!alreadyWired) {
+  cfg.hooks.Stop.push({
+    matcher: "*",
+    hooks: [{ type: "command", command: stopCmd }]
+  });
+}
+fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
+JSEOF
+  ok "Stop hook wired in ~/.claude/settings.json"
+else
+  warn "superagent-distill.sh not found — skipping"
+fi
+echo ""
+
+# ── Step 14: Honor --local-only flag ──────────────────────────────────────────
+if [[ "$LOCAL_ONLY" == "1" ]]; then
+  mkdir -p "$HOME/.superagent"
+  touch "$HOME/.superagent/local-only"
+  ok "--local-only marker written to ~/.superagent/local-only"
+  info "Hooks and tools will honor this marker and avoid outbound calls."
+  echo ""
+fi
 
 # ── Done ─────────────────────────────────────────────────────────────────────
 echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"

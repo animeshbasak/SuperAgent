@@ -1,0 +1,32 @@
+name: bench
+
+on:
+  pull_request:
+    paths:
+      - "skills/superagent/brain/rules.yaml"
+      - "bin/superagent-classify"
+      - "bench/**"
+      - ".github/workflows/bench.yml"
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq python3
+          python3 -m pip install --user pyyaml
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Make scripts executable
+        run: |
+          chmod +x bin/superagent-classify
+          chmod +x bench/run.sh
+          chmod +x bench/score.sh
+
+      - name: Run bench
+        run: bash bench/run.sh

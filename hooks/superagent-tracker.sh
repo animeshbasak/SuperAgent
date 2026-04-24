@@ -165,4 +165,17 @@ jq --arg project  "$PROJECT" \
    "$STATS" > "$TMP" 2>>"$LOG" && mv "$TMP" "$STATS" \
    || log "jq update failed for $TOOL_TYPE in $PROJECT"
 
+# Per-call cost log (Task 5.3)
+COST_FILE="$HOME/.superagent/cost/calls.jsonl"
+mkdir -p "$(dirname "$COST_FILE")" 2>/dev/null || true
+{
+  printf '%s' "{"
+  printf '"ts":"%s",' "$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
+  printf '"project":"%s",' "${PROJECT:-unknown}"
+  printf '"tool":"%s",' "${TOOL_TYPE:-unknown}"
+  printf '"tokens":%s,' "${RESPONSE_TOKENS:-0}"
+  printf '"model":"%s"' "${CLAUDE_MODEL:-unknown}"
+  printf '}\n'
+} >> "$COST_FILE" 2>/dev/null || true
+
 exit 0
