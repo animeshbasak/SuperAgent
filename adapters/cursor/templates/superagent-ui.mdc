@@ -1,0 +1,16 @@
+---
+description: SuperAgent UI/UX intelligence — premium design principles and verification
+globs: ["**/*.tsx", "**/*.jsx", "**/*.vue", "**/*.svelte", "**/components/**", "**/pages/**"]
+alwaysApply: false
+---
+
+# UI/UX Design Intelligence
+
+- Use curated, harmonious color palettes (not generic red/blue/green)
+- Modern typography (Inter, Roboto, Outfit) — never browser defaults
+- Smooth gradients, micro-animations, glassmorphism
+- Hover effects and interactive elements for engagement
+- Premium feel — not minimum viable product
+- Dark mode support
+- Responsive layouts
+- Verify visually before declaring done

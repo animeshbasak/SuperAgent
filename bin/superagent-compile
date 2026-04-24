@@ -1,0 +1,621 @@
+#!/usr/bin/env python3
+"""
+superagent-compile — Compile SuperAgent skills into platform-specific instruction files.
+
+Reads all SKILL.md files from the skills/ directory and produces output formatted
+for the target platform's instruction system.
+
+Usage:
+    superagent-compile --platform <platform> [--output <path>] [--skills-dir <path>]
+
+Platforms: codex, gemini, cursor, windsurf, copilot, continue, aider
+
+Examples:
+    superagent-compile --platform codex --output adapters/codex/templates/AGENTS.md
+    superagent-compile --platform cursor --output adapters/cursor/templates/
+    superagent-compile --platform gemini --output adapters/gemini/templates/skills/
+"""
+
+import argparse
+import os
+import re
+import sys
+import textwrap
+from pathlib import Path
+
+# ── Constants ────────────────────────────────────────────────────────────────
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+DEFAULT_SKILLS_DIR = REPO_ROOT / "skills"
+ETHOS_FILE = REPO_ROOT / "ETHOS.md"
+RULES_FILE = DEFAULT_SKILLS_DIR / "superagent" / "brain" / "rules.yaml"
+
+# Cursor has a 12,000 char total limit across all active rules
+CURSOR_CHAR_LIMIT = 12000
+
+# Skills that require tool execution (bash/python) — for routing table embedding
+TOOL_DEPENDENT_SKILLS = {"superagent", "token-stats", "bench", "learn"}
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def read_file(path: Path) -> str:
+    """Read file contents, return empty string if missing."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ""
+
+
+def parse_frontmatter(content: str) -> tuple[dict, str]:
+    """Parse YAML frontmatter from markdown. Returns (metadata, body)."""
+    if not content.startswith("---"):
+        return {}, content
+
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return {}, content
+
+    meta = {}
+    for line in parts[1].strip().split("\n"):
+        line = line.strip()
+        if ":" in line:
+            key, _, val = line.partition(":")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            # Handle multi-line description with >
+            if val == ">":
+                continue
+            if key and val:
+                meta[key] = val
+            elif key and not val and key in meta:
+                pass  # skip empty overwrite
+            elif key:
+                meta[key] = ""
+
+    body = parts[2].strip()
+    return meta, body
+
+
+def discover_skills(skills_dir: Path) -> list[dict]:
+    """Find all SKILL.md files and parse them."""
+    skills = []
+    for skill_dir in sorted(skills_dir.iterdir()):
+        if not skill_dir.is_dir():
+            continue
+        skill_file = skill_dir / "SKILL.md"
+        if not skill_file.exists():
+            continue
+
+        content = read_file(skill_file)
+        meta, body = parse_frontmatter(content)
+
+        skills.append({
+            "name": meta.get("name", skill_dir.name),
+            "description": meta.get("description", ""),
+            "argument_hint": meta.get("argument-hint", ""),
+            "dir_name": skill_dir.name,
+            "body": body,
+            "full_content": content,
+            "path": skill_file,
+        })
+
+    return skills
+
+
+def load_routing_table(rules_file: Path) -> str:
+    """Load rules.yaml and format as a markdown routing table."""
+    content = read_file(rules_file)
+    if not content:
+        return ""
+
+    # Simple YAML parsing (avoid dependency on pyyaml for portability)
+    lines = []
+    lines.append("## Task Routing\n")
+    lines.append("When a task matches these patterns, follow the corresponding skill chain:\n")
+    lines.append("| Pattern Keywords | Skill Chain |")
+    lines.append("|-----------------|-------------|")
+
+    in_rules = False
+    current_name = ""
+    current_signal = ""
+    current_chain = ""
+
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if stripped == "rules:":
+            in_rules = True
+            continue
+        if in_rules:
+            if stripped.startswith("- name:"):
+                if current_name and current_signal:
+                    # Extract readable keywords from regex
+                    keywords = re.findall(r'[a-zA-Z][a-zA-Z\s.]+', current_signal)
+                    keywords_str = ", ".join(k.strip() for k in keywords if len(k.strip()) > 1)
+                    lines.append(f"| {keywords_str} | {current_chain} |")
+                current_name = stripped.split(":", 1)[1].strip()
+                current_signal = ""
+                current_chain = ""
+            elif stripped.startswith("signal:"):
+                current_signal = stripped.split(":", 1)[1].strip().strip('"')
+            elif stripped.startswith("chain:"):
+                chain_raw = stripped.split(":", 1)[1].strip()
+                # Parse [item1, item2] format
+                items = re.findall(r'[\w-]+', chain_raw)
+                current_chain = " → ".join(items)
+            elif stripped.startswith("build_archetypes:") or (not stripped.startswith("-") and not stripped.startswith("#") and ":" in stripped and not stripped.startswith("signal") and not stripped.startswith("chain")):
+                # Flush last rule
+                if current_name and current_signal:
+                    keywords = re.findall(r'[a-zA-Z][a-zA-Z\s.]+', current_signal)
+                    keywords_str = ", ".join(k.strip() for k in keywords if len(k.strip()) > 1)
+                    lines.append(f"| {keywords_str} | {current_chain} |")
+                in_rules = False
+
+    # Flush final rule
+    if current_name and current_signal:
+        keywords = re.findall(r'[a-zA-Z][a-zA-Z\s.]+', current_signal)
+        keywords_str = ", ".join(k.strip() for k in keywords if len(k.strip()) > 1)
+        lines.append(f"| {keywords_str} | {current_chain} |")
+
+    return "\n".join(lines)
+
+
+def load_ethos() -> str:
+    """Load ETHOS.md content."""
+    content = read_file(ETHOS_FILE)
+    if not content:
+        return "> **Ethos:** Verify or die. Rewind, don't correct. Memory compounds. Leverage over toil. Local first.\n"
+    return content
+
+
+# ── Platform Compilers ───────────────────────────────────────────────────────
+
+def compile_codex(skills: list[dict], output: Path):
+    """Compile all skills into a single AGENTS.md for Codex CLI."""
+    parts = []
+    parts.append("# SuperAgent — AI Coding Agent Enhancement System\n")
+    parts.append("> One install turns any AI coding agent into a senior engineer who knows your codebase,")
+    parts.append("> remembers every decision, never skips tests, and ships premium UIs.\n")
+
+    # Ethos
+    parts.append(load_ethos())
+    parts.append("")
+
+    # Routing table
+    parts.append(load_routing_table(RULES_FILE))
+    parts.append("")
+
+    # Tool instructions
+    parts.append("## Tools\n")
+    parts.append("SuperAgent includes these CLI tools. Run them when indicated by the routing table:\n")
+    parts.append("| Tool | Command | Purpose |")
+    parts.append("|------|---------|---------|")
+    parts.append("| Classifier | `superagent-classify \"<task>\"` | Route task to skill chain (JSON output) |")
+    parts.append("| Chain Runner | `superagent-chain <chain-name>` | Execute a YAML skill chain |")
+    parts.append("| Cost Tracker | `superagent-cost today` | Token cost by model + coach notes |")
+    parts.append("| Learnings | `superagent-learn add \"<text>\"` | Save per-project learnings |")
+    parts.append("| Knowledge Graph | `graphify query \"<question>\"` | Query codebase knowledge graph |")
+    parts.append("| Memory | `mempalace search \"<query>\"` | Cross-session memory search |")
+    parts.append("")
+
+    # All skills
+    parts.append("---\n")
+    parts.append("## Skills Reference\n")
+
+    for skill in skills:
+        parts.append(f"### {skill['name']}")
+        if skill['description']:
+            parts.append(f"> {skill['description']}\n")
+        # Include full body but strip Claude-specific frontmatter references
+        body = skill['body']
+        body = re.sub(r'```bash\nmempalace wake-up.*?\n```', '```bash\nmempalace wake-up 2>/dev/null | head -60 || true\n```', body)
+        parts.append(body)
+        parts.append("\n---\n")
+
+    # Non-negotiables
+    parts.append("## Non-Negotiables\n")
+    parts.append("- NEVER skip verification on build/fix tasks")
+    parts.append("- NEVER skip systematic debugging when a bug is mentioned")
+    parts.append("- NEVER start implementing without brainstorming or an existing plan")
+    parts.append("- ALWAYS verify your work before declaring done")
+    parts.append("- ALWAYS rewind/restart instead of correcting on failed paths")
+    parts.append("")
+
+    content = "\n".join(parts)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(content, encoding="utf-8")
+    print(f"✓ Codex AGENTS.md written to {output} ({len(content)} chars)")
+
+
+def compile_gemini(skills: list[dict], output: Path):
+    """Compile skills into Gemini/Antigravity format (GEMINI.md + per-skill SKILL.md)."""
+    output.mkdir(parents=True, exist_ok=True)
+
+    # Global GEMINI.md
+    gemini_parts = []
+    gemini_parts.append("# SuperAgent — AI Coding Agent Enhancement System\n")
+    gemini_parts.append(load_ethos())
+    gemini_parts.append("")
+    gemini_parts.append(load_routing_table(RULES_FILE))
+    gemini_parts.append("")
+    gemini_parts.append("## Tools\n")
+    gemini_parts.append("| Tool | Command | Purpose |")
+    gemini_parts.append("|------|---------|---------|")
+    gemini_parts.append("| Classifier | `superagent-classify \"<task>\"` | Route task to skill chain |")
+    gemini_parts.append("| Knowledge Graph | `graphify query \"<question>\"` | Query codebase knowledge graph |")
+    gemini_parts.append("| Memory | `mempalace search \"<query>\"` | Cross-session memory search |")
+    gemini_parts.append("")
+    gemini_parts.append("## Non-Negotiables\n")
+    gemini_parts.append("- NEVER skip verification on build/fix tasks")
+    gemini_parts.append("- NEVER skip systematic debugging when a bug is mentioned")
+    gemini_parts.append("- NEVER start implementing without brainstorming or an existing plan")
+    gemini_parts.append("- ALWAYS verify your work before declaring done")
+    gemini_parts.append("")
+
+    gemini_content = "\n".join(gemini_parts)
+    (output / "GEMINI.md").write_text(gemini_content, encoding="utf-8")
+    print(f"✓ GEMINI.md written ({len(gemini_content)} chars)")
+
+    # Per-skill SKILL.md files (Antigravity natively supports this format!)
+    skills_dir = output / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    for skill in skills:
+        skill_out = skills_dir / skill["dir_name"]
+        skill_out.mkdir(parents=True, exist_ok=True)
+
+        # Rewrite frontmatter for Gemini (same keys, just ensure compatibility)
+        content = f"""---
+name: {skill['name']}
+description: {skill['description']}
+---
+
+{skill['body']}
+"""
+        (skill_out / "SKILL.md").write_text(content, encoding="utf-8")
+
+    print(f"✓ {len(skills)} skill files written to {skills_dir}/")
+
+
+def compile_cursor(skills: list[dict], output: Path):
+    """Compile skills into Cursor .mdc format (compact, under 12k char total)."""
+    output.mkdir(parents=True, exist_ok=True)
+
+    total_chars = 0
+
+    # 1. Core routing rule (always-apply, <200 words)
+    core_parts = []
+    core_parts.append("---")
+    core_parts.append("description: SuperAgent routing brain — classifies tasks and enforces verification discipline")
+    core_parts.append("alwaysApply: true")
+    core_parts.append("---\n")
+    core_parts.append("# SuperAgent Core\n")
+    core_parts.append("> Verify or die. Memory compounds. Leverage over toil.\n")
+    core_parts.append(load_routing_table(RULES_FILE))
+    core_parts.append("")
+    core_parts.append("## Rules")
+    core_parts.append("- NEVER skip verification on build/fix tasks")
+    core_parts.append("- NEVER start implementing without a plan")
+    core_parts.append("- ALWAYS verify work before declaring done")
+    core_parts.append("")
+
+    core_content = "\n".join(core_parts)
+    (output / "superagent-core.mdc").write_text(core_content, encoding="utf-8")
+    total_chars += len(core_content)
+
+    # 2. TDD rule (auto-attached on test files)
+    tdd_parts = []
+    tdd_parts.append("---")
+    tdd_parts.append("description: SuperAgent TDD discipline — write tests before implementation")
+    tdd_parts.append('globs: ["**/*.test.*", "**/*.spec.*", "**/test/**", "**/__tests__/**"]')
+    tdd_parts.append("alwaysApply: false")
+    tdd_parts.append("---\n")
+    tdd_parts.append("# Test-Driven Development\n")
+    tdd_parts.append("1. Write failing test FIRST")
+    tdd_parts.append("2. Implement minimum code to pass")
+    tdd_parts.append("3. Refactor while green")
+    tdd_parts.append("4. Never skip — even for \"simple\" changes")
+    tdd_parts.append("5. Run tests before declaring done")
+    tdd_parts.append("")
+
+    tdd_content = "\n".join(tdd_parts)
+    (output / "superagent-tdd.mdc").write_text(tdd_content, encoding="utf-8")
+    total_chars += len(tdd_content)
+
+    # 3. UI/Design rule (auto-attached on component files)
+    ui_parts = []
+    ui_parts.append("---")
+    ui_parts.append("description: SuperAgent UI/UX intelligence — premium design principles and verification")
+    ui_parts.append('globs: ["**/*.tsx", "**/*.jsx", "**/*.vue", "**/*.svelte", "**/components/**", "**/pages/**"]')
+    ui_parts.append("alwaysApply: false")
+    ui_parts.append("---\n")
+    ui_parts.append("# UI/UX Design Intelligence\n")
+    ui_parts.append("- Use curated, harmonious color palettes (not generic red/blue/green)")
+    ui_parts.append("- Modern typography (Inter, Roboto, Outfit) — never browser defaults")
+    ui_parts.append("- Smooth gradients, micro-animations, glassmorphism")
+    ui_parts.append("- Hover effects and interactive elements for engagement")
+    ui_parts.append("- Premium feel — not minimum viable product")
+    ui_parts.append("- Dark mode support")
+    ui_parts.append("- Responsive layouts")
+    ui_parts.append("- Verify visually before declaring done")
+    ui_parts.append("")
+
+    ui_content = "\n".join(ui_parts)
+    (output / "superagent-ui.mdc").write_text(ui_content, encoding="utf-8")
+    total_chars += len(ui_content)
+
+    # 4. Debug rule (agent-requested)
+    debug_parts = []
+    debug_parts.append("---")
+    debug_parts.append("description: SuperAgent systematic debugging — reproduce, isolate, explain, verify")
+    debug_parts.append("alwaysApply: false")
+    debug_parts.append("---\n")
+    debug_parts.append("# Systematic Debugging\n")
+    debug_parts.append("## Iron Law: No fixes without investigation first\n")
+    debug_parts.append("1. **Reproduce** — Get a failing test or reproduction steps")
+    debug_parts.append("2. **Isolate** — Binary search: which change broke it?")
+    debug_parts.append("3. **Explain** — State the root cause in one sentence")
+    debug_parts.append("4. **Fix** — Minimal change addressing root cause only")
+    debug_parts.append("5. **Verify** — Run the reproduction, confirm fix, run full suite")
+    debug_parts.append("6. **Learn** — Document what caused it for future prevention")
+    debug_parts.append("")
+
+    debug_content = "\n".join(debug_parts)
+    (output / "superagent-debug.mdc").write_text(debug_content, encoding="utf-8")
+    total_chars += len(debug_content)
+
+    # 5. Security rule (agent-requested)
+    sec_parts = []
+    sec_parts.append("---")
+    sec_parts.append("description: SuperAgent security audit — OWASP top-10, STRIDE threat model, secrets scan")
+    sec_parts.append("alwaysApply: false")
+    sec_parts.append("---\n")
+    sec_parts.append("# Security Audit (CSO)\n")
+    sec_parts.append("1. OWASP Top-10 scan against codebase")
+    sec_parts.append("2. STRIDE threat model for new features")
+    sec_parts.append("3. Secrets grep (API keys, tokens, passwords in code)")
+    sec_parts.append("4. Supply chain check (dependency vulnerabilities)")
+    sec_parts.append("5. Output: severity-ranked findings report")
+    sec_parts.append("")
+
+    sec_content = "\n".join(sec_parts)
+    (output / "superagent-security.mdc").write_text(sec_content, encoding="utf-8")
+    total_chars += len(sec_content)
+
+    # 6. Ship rule (agent-requested)
+    ship_parts = []
+    ship_parts.append("---")
+    ship_parts.append("description: SuperAgent ship pipeline — rebase, test, review, commit, push, PR")
+    ship_parts.append("alwaysApply: false")
+    ship_parts.append("---\n")
+    ship_parts.append("# Ship Pipeline\n")
+    ship_parts.append("1. Rebase on base branch")
+    ship_parts.append("2. Run full test suite")
+    ship_parts.append("3. Audit coverage and scope drift")
+    ship_parts.append("4. Pre-landing code review (6-point checklist)")
+    ship_parts.append("5. Bisectable commits (one logical change per commit)")
+    ship_parts.append("6. Verification gate — all tests pass")
+    ship_parts.append("7. Push and open PR")
+    ship_parts.append("8. Never ship from main/master directly")
+    ship_parts.append("")
+
+    ship_content = "\n".join(ship_parts)
+    (output / "superagent-ship.mdc").write_text(ship_content, encoding="utf-8")
+    total_chars += len(ship_content)
+
+    # 7. Planning rule (agent-requested)
+    plan_parts = []
+    plan_parts.append("---")
+    plan_parts.append("description: SuperAgent planning discipline — brainstorm, plan, review, then execute")
+    plan_parts.append("alwaysApply: false")
+    plan_parts.append("---\n")
+    plan_parts.append("# Planning Discipline\n")
+    plan_parts.append("1. **Brainstorm** — Explore solution space before committing")
+    plan_parts.append("2. **Write Plan** — Document approach, dependencies, risks")
+    plan_parts.append("3. **CEO Review** — Does this solve the right problem?")
+    plan_parts.append("4. **Eng Review** — Architecture, edge cases, test coverage")
+    plan_parts.append("5. **Design Review** — Rate 10 dimensions 0-10, fix anything <7")
+    plan_parts.append("6. **Execute** — Follow the plan with checkpoints")
+    plan_parts.append("")
+
+    plan_content = "\n".join(plan_parts)
+    (output / "superagent-planning.mdc").write_text(plan_content, encoding="utf-8")
+    total_chars += len(plan_content)
+
+    if total_chars > CURSOR_CHAR_LIMIT:
+        print(f"⚠ Warning: Total chars ({total_chars}) exceeds Cursor limit ({CURSOR_CHAR_LIMIT})")
+        print(f"  Only superagent-core.mdc is alwaysApply — others load on-demand")
+    else:
+        print(f"✓ {total_chars} chars total (under {CURSOR_CHAR_LIMIT} limit)")
+
+    print(f"✓ 7 Cursor .mdc files written to {output}/")
+
+
+def compile_windsurf(skills: list[dict], output: Path):
+    """Compile into Windsurf format (AGENTS.md + .windsurf/rules/)."""
+    output.mkdir(parents=True, exist_ok=True)
+
+    # Main AGENTS.md (same as Codex)
+    compile_codex(skills, output / "AGENTS.md")
+
+    # Additionally create modular rules
+    rules_dir = output / "rules"
+    rules_dir.mkdir(parents=True, exist_ok=True)
+
+    for skill in skills:
+        content = f"# {skill['name']}\n\n"
+        if skill['description']:
+            content += f"> {skill['description']}\n\n"
+        content += skill['body'] + "\n"
+        (rules_dir / f"superagent-{skill['dir_name']}.md").write_text(content, encoding="utf-8")
+
+    print(f"✓ {len(skills)} Windsurf rule files written to {rules_dir}/")
+
+
+def compile_copilot(skills: list[dict], output: Path):
+    """Compile into a single copilot-instructions.md."""
+    parts = []
+    parts.append("# SuperAgent — AI Coding Agent Enhancement System\n")
+    parts.append("> Verify or die. Memory compounds. Leverage over toil.\n")
+
+    # Routing table
+    parts.append(load_routing_table(RULES_FILE))
+    parts.append("")
+
+    # Compact skill summaries (Copilot has a single file, keep it focused)
+    parts.append("## Skills Summary\n")
+    for skill in skills:
+        if skill['name'] in TOOL_DEPENDENT_SKILLS:
+            continue  # Skip tool-dependent skills for Copilot
+        parts.append(f"### {skill['name']}")
+        if skill['description']:
+            parts.append(f"> {skill['description']}\n")
+        # Include only first 500 chars of body for compactness
+        body_preview = skill['body'][:500]
+        if len(skill['body']) > 500:
+            body_preview += "\n\n*(Full instructions available in SuperAgent skills directory)*\n"
+        parts.append(body_preview)
+        parts.append("")
+
+    parts.append("## Non-Negotiables\n")
+    parts.append("- NEVER skip verification on build/fix tasks")
+    parts.append("- NEVER start implementing without a plan")
+    parts.append("- ALWAYS verify work before declaring done")
+    parts.append("")
+
+    content = "\n".join(parts)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(content, encoding="utf-8")
+    print(f"✓ Copilot instructions written to {output} ({len(content)} chars)")
+
+
+def compile_continue(skills: list[dict], output: Path):
+    """Compile into Continue.dev numbered rule files."""
+    output.mkdir(parents=True, exist_ok=True)
+
+    # 01 - Core
+    core_content = f"""---
+name: SuperAgent Core
+---
+# SuperAgent Core
+
+> Verify or die. Memory compounds. Leverage over toil.
+
+{load_routing_table(RULES_FILE)}
+
+## Non-Negotiables
+- NEVER skip verification on build/fix tasks
+- NEVER start implementing without a plan
+- ALWAYS verify work before declaring done
+"""
+    (output / "01-superagent-core.md").write_text(core_content, encoding="utf-8")
+
+    # Individual skill files
+    for i, skill in enumerate(skills, start=2):
+        content = f"""---
+name: {skill['name']}
+---
+# {skill['name']}
+
+> {skill['description']}
+
+{skill['body']}
+"""
+        filename = f"{i:02d}-superagent-{skill['dir_name']}.md"
+        (output / filename).write_text(content, encoding="utf-8")
+
+    print(f"✓ {len(skills) + 1} Continue.dev rule files written to {output}/")
+
+
+def compile_aider(skills: list[dict], output: Path):
+    """Compile into Aider CONVENTIONS.md + .aider.conf.yml."""
+    output.mkdir(parents=True, exist_ok=True)
+
+    # CONVENTIONS.md (full skills, similar to Codex)
+    compile_codex(skills, output / "CONVENTIONS.md")
+
+    # .aider.conf.yml
+    conf_content = """# SuperAgent configuration for Aider
+# Auto-loads SuperAgent conventions on every session
+read: CONVENTIONS.md
+"""
+    (output / ".aider.conf.yml").write_text(conf_content, encoding="utf-8")
+    print(f"✓ Aider .aider.conf.yml written to {output}/")
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+COMPILERS = {
+    "codex": lambda skills, out: compile_codex(skills, Path(out)),
+    "gemini": lambda skills, out: compile_gemini(skills, Path(out)),
+    "cursor": lambda skills, out: compile_cursor(skills, Path(out)),
+    "windsurf": lambda skills, out: compile_windsurf(skills, Path(out)),
+    "copilot": lambda skills, out: compile_copilot(skills, Path(out)),
+    "continue": lambda skills, out: compile_continue(skills, Path(out)),
+    "aider": lambda skills, out: compile_aider(skills, Path(out)),
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Compile SuperAgent skills into platform-specific instruction files."
+    )
+    parser.add_argument(
+        "--platform", "-p",
+        required=True,
+        choices=list(COMPILERS.keys()) + ["all"],
+        help="Target platform"
+    )
+    parser.add_argument(
+        "--output", "-o",
+        help="Output path (file or directory depending on platform)"
+    )
+    parser.add_argument(
+        "--skills-dir",
+        default=str(DEFAULT_SKILLS_DIR),
+        help="Path to skills directory"
+    )
+
+    args = parser.parse_args()
+    skills_dir = Path(args.skills_dir)
+
+    if not skills_dir.exists():
+        print(f"✗ Skills directory not found: {skills_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    skills = discover_skills(skills_dir)
+    print(f"Found {len(skills)} skills in {skills_dir}")
+
+    if args.platform == "all":
+        # Compile for all platforms
+        adapters_dir = REPO_ROOT / "adapters"
+        for platform, compiler in COMPILERS.items():
+            out = adapters_dir / platform / "templates"
+            if platform in ("codex",):
+                out = out / "AGENTS.md"
+            elif platform in ("copilot",):
+                out = out / "copilot-instructions.md"
+            elif platform in ("cursor",):
+                pass  # directory
+            elif platform in ("gemini",):
+                pass  # directory
+            elif platform in ("continue",):
+                out = out / "rules"
+            elif platform in ("aider",):
+                pass  # directory
+            elif platform in ("windsurf",):
+                pass  # directory
+
+            print(f"\n── {platform} ──")
+            compiler(skills, str(out))
+    else:
+        if not args.output:
+            print("✗ --output is required when compiling for a single platform", file=sys.stderr)
+            sys.exit(1)
+        COMPILERS[args.platform](skills, args.output)
+
+
+if __name__ == "__main__":
+    main()

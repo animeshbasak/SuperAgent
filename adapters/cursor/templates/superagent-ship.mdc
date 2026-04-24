@@ -1,0 +1,15 @@
+---
+description: SuperAgent ship pipeline — rebase, test, review, commit, push, PR
+alwaysApply: false
+---
+
+# Ship Pipeline
+
+1. Rebase on base branch
+2. Run full test suite
+3. Audit coverage and scope drift
+4. Pre-landing code review (6-point checklist)
+5. Bisectable commits (one logical change per commit)
+6. Verification gate — all tests pass
+7. Push and open PR
+8. Never ship from main/master directly

@@ -1,0 +1,13 @@
+---
+description: SuperAgent planning discipline — brainstorm, plan, review, then execute
+alwaysApply: false
+---
+
+# Planning Discipline
+
+1. **Brainstorm** — Explore solution space before committing
+2. **Write Plan** — Document approach, dependencies, risks
+3. **CEO Review** — Does this solve the right problem?
+4. **Eng Review** — Architecture, edge cases, test coverage
+5. **Design Review** — Rate 10 dimensions 0-10, fix anything <7
+6. **Execute** — Follow the plan with checkpoints

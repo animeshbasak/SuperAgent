@@ -1,0 +1,12 @@
+---
+description: SuperAgent security audit — OWASP top-10, STRIDE threat model, secrets scan
+alwaysApply: false
+---
+
+# Security Audit (CSO)
+
+1. OWASP Top-10 scan against codebase
+2. STRIDE threat model for new features
+3. Secrets grep (API keys, tokens, passwords in code)
+4. Supply chain check (dependency vulnerabilities)
+5. Output: severity-ranked findings report

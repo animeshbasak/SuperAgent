@@ -1,0 +1,3 @@
+# SuperAgent configuration for Aider
+# Auto-loads SuperAgent conventions on every session
+read: CONVENTIONS.md

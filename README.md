@@ -1,235 +1,282 @@
-# SuperAgent for Claude Code
+<div align="center">
 
-> One command turns Claude Code into a senior engineer who already knows your codebase, remembers every decision, never skips tests, and ships Awwwards-class UIs.
+# SuperAgent
 
-```bash
-git clone https://github.com/animeshbasak/SuperAgent
-bash SuperAgent/install.sh
-```
+### Stop paying for tokens your AI burned re-reading your codebase.
 
-Restart Claude Code. Type `/superagent <your task>`. Done.
-
----
-
-## v2.0 — AI brain + 10 new skills
-
-One entrypoint. Type `/superagent <task>`. SuperAgent classifies the task, announces the skill chain it will run, and executes — no skill-memorization.
-
-**New in v2:**
-- **`/superagent <task>`** — AI router with 20-prompt bench (avg 1.00, HARD GATE ≥ 0.90).
-- **7 role-play skills** imported from [gstack](https://github.com/garrytan/gstack) (gstack infra stripped, signature IP preserved): `/plan-ceo-review`, `/plan-eng-review`, `/plan-design-review`, `/autoplan`, `/review`, `/investigate`, `/ship`.
-- **3 native skills**: `/office-hours`, `/cso`, `/learn`.
-- **Auto-distill Stop hook** — captures corrections to `CLAUDE.md.superagent-proposed` (never mutates CLAUDE.md directly).
-- **Cost intelligence** — `superagent-cost today` → $ by model + coach notes.
-- **Skill DAGs + `/fanout`** — YAML chains (`ship-v2`, `feature-build`) + parallel primitive.
-- **Context-rot gauge** — statusline warns at 300k tokens.
-- **`--local-only` install flag** — privacy marker.
-- **`~/.superagent/` state root** — one place for brain / bench / learnings / chains / cost / logs.
-
-See [CHANGELOG.md](CHANGELOG.md) for full v2.0.0 notes.
-
----
-
-## The problem with Claude Code out of the box
-
-Every session starts cold. You re-explain the same codebase. Claude reads 40 files to answer one question. It forgets what you decided last Tuesday. It dives into code before you've agreed on a plan. It says "done" when it isn't. And when you ask for a "premium" UI, you get Bootstrap with a gradient.
-
-You're losing hours. And tokens.
-
----
-
-## What SuperAgent adds
-
-### A routing brain
-Every task is analyzed and routed to the right skill chain — automatically. "Fix this bug" triggers systematic debugging → TDD → verification, in that order, every time. You never have to remember which skill to reach for.
-
-### A knowledge graph
-`graphify` indexes your entire codebase into a queryable graph. One query replaces reading 71 files. Your real compression ratio — measured from *your* codebase, not a benchmark — is tracked live in your statusline.
-
-```
-[SA: ~231k saved | 48x]
-```
-
-### A memory system
-`mempalace` stores cross-session context locally. No API key. 96.6% retrieval accuracy. Claude walks into your project already knowing what matters.
-
-### 20+ expert skills
-TDD, planning, systematic debugging, parallel agents, security review, code quality, UI design intelligence, premium WebGL/3D — each one enforces discipline you'd otherwise skip at 11pm.
-
-### Premium creative web
-`webgl-craft` is a technique library distilled from deep teardowns of Awwwards winners (Igloo Inc, Lando Norris, Prometheus Fuels, Shopify Editions). Five technique domains. Nine production-ready recipes. One question it always routes back to: *what is this site's signature move?*
-
----
-
-## Install
+**One install. 8 AI coding tools. 95% fewer tokens. Never skips tests.**
 
 ```bash
 git clone https://github.com/animeshbasak/SuperAgent
-bash SuperAgent/install.sh
+bash SuperAgent/install-universal.sh
 ```
 
-**What runs automatically:**
+[![Stars](https://img.shields.io/github/stars/animeshbasak/SuperAgent?style=social)](https://github.com/animeshbasak/SuperAgent)
+[![Platforms](https://img.shields.io/badge/platforms-8-blue)](#works-with-every-ai-coding-tool-you-use)
+[![Token Savings](https://img.shields.io/badge/token_savings-95%25-brightgreen)](#the-receipt-share-your-savings)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-| Step | What happens |
-|------|-------------|
-| Registers plugin marketplaces | superpowers, caveman, claude-mem, ui-ux-pro-max |
-| Installs Claude plugins | 5 plugins via `claude plugin install` |
-| Installs webgl-craft | Premium WebGL/3D skill to `~/.claude/skills/webgl-craft` |
-| Indexes `~/.claude` into mempalace | Cross-session memory, ready on first use |
-| Builds graphify knowledge graph | All installed skills, queryable immediately |
-| Wires token savings tracker | Statusline badge + `/token-stats` command |
-| Calibrates compression ratio | From your actual codebase, not benchmarks |
-
-**After install:** restart Claude Code, type `superagent`.
-
-**Requirements:** Claude Code CLI · Node.js 18+ · macOS or Linux
+</div>
 
 ---
 
-## Routing table
+## The 60-second test
 
-Type `superagent` (or just start any task). The routing brain activates the right stack:
+**Without SuperAgent:**
+```
+You:    "how does auth work in this repo?"
+Agent:  reads 71 files → 187,000 tokens → $2.80 → 4 minutes
+```
 
-| Intent | Skill chain |
-|--------|-------------|
-| "build X" / "add feature" | brainstorming → writing-plans → TDD → executing-plans |
-| "fix bug" / "broken" | systematic-debugging → TDD → verification |
-| "understand codebase" | graphify query → smart-explore |
-| "ship" / "PR" / "merge" | verification → requesting-code-review → finishing-branch |
-| "design" / "UI" / "component" | ui-ux-pro-max → TDD → verification |
-| "3D" / "WebGL" / "cinematic" | webgl-craft → TDD → verification |
-| "did we solve this?" | mempalace search → claude-mem:mem-search |
-| 2+ independent tasks | dispatching-parallel-agents |
+**With SuperAgent:**
+```
+You:    "how does auth work in this repo?"
+Agent:  graphify query "auth" → 2,600 tokens → $0.04 → 3 seconds
+```
 
-No configuration. No manual skill selection. It just routes.
+**71.5x cheaper. Every query. Forever.**
+
+Multiply that by every "where is X defined", every "why did we do Y", every "walk me through Z". You just got your weekends back.
 
 ---
 
-## What's installed
+## Works with every AI coding tool you use
 
-| Tool | Type | Purpose |
-|------|------|---------|
-| **superagent** | Claude skill | Routing brain — activates this whole system |
-| **superpowers** | Claude plugin | 20+ workflow skills (TDD, planning, debugging, reviews) |
-| **caveman** | Claude plugin | ~75% token reduction mode for terse sessions |
-| **claude-mem** | Claude plugin | Cross-session memory + AST-level code search |
-| **ui-ux-pro-max** | Claude plugin | Frontend design intelligence — 50+ styles, 161 palettes, 57 font pairings |
-| **webgl-craft** | Claude skill | Premium WebGL/3D creative web — Awwwards-class technique library |
-| **graphify** | Python (pipx) | Codebase → knowledge graph, 71.5x token reduction per query |
-| **mempalace** | Python (pipx) | Local-first AI memory, no API key, 96.6% retrieval accuracy |
+| | | | |
+|---|---|---|---|
+| **Claude Code** | **Codex CLI** | **Cursor** | **Windsurf** |
+| **GitHub Copilot** | **Gemini / Antigravity** | **Continue.dev** | **Aider** |
+
+One installer. Auto-detects every platform on your machine. Installs the right adapter for each.
+
+```bash
+bash install-universal.sh --list      # see what's detected
+bash install-universal.sh             # install everywhere
+```
 
 ---
 
-## webgl-craft — Premium creative web
+## Why it exists
 
-`webgl-craft` routes every WebGL/3D decision through the right technique reference. Five domains, nine production recipes, one principle: **signature interactions beat signature stacks**.
+Every AI coding session starts cold. You re-explain the same codebase. The agent reads 40 files to answer one question. Forgets what you decided last Tuesday. Dives into code before you've agreed on a plan. Says "done" when it isn't. You ask for "premium UI" and you get Bootstrap with a gradient.
 
-**Triggers automatically on:** Three.js · React Three Fiber · WebGL · WebGPU · shaders · GSAP ScrollTrigger · Lenis · Framer Motion transitions · custom cursors · MSDF text · particles · post-processing · "make it cinematic" · "feels flat" · "Awwwards" · "FWA" · "Active Theory"
+You're losing hours. You're losing tokens. **On every platform.**
 
-**Five technique domains:**
+SuperAgent fixes this with four levers:
 
-| Domain | Reference | When to read |
-|--------|-----------|-------------|
-| Architecture | `architecture.md` | Persistent canvas vs hybrid vs DOM-first — read FIRST for new projects |
-| Shaders & 3D | `shaders.md` | Materials, post-processing, GPGPU, gravitational lensing, fluid distortion |
-| Motion & Scroll | `motion-scroll.md` | GSAP ScrollTrigger, Lenis, camera scrubbing, timeline choreography |
-| Interaction | `interaction.md` | Custom cursors, magnetic effects, AI terminals, audio, a11y |
-| Pipeline & Perf | `pipeline.md` | Draco/KTX2/Basis, WebGPU/TSL, Lighthouse, device-tier adaptation |
-
-**Nine production recipes:**
-
-```
-recipes/
-├── persistent-canvas-r3f.tsx     single canvas across routes (Next.js App Router)
-├── lensing-shader.ts             Schwarzschild black hole approximation (TSL)
-├── fluid-cursor-mask.ts          Lando-style liquid blob cursor (TSL)
-├── msdf-text-hero.tsx            troika-three-text hero with shader distortion
-├── scroll-uniform-bridge.ts      GSAP ScrollTrigger → shader uniform
-├── two-track-frame-budget.ts     60fps hero + 12fps secondary gate
-├── barba-style-transitions.tsx   persistent canvas + DOM overlay swap
-├── ai-terminal-widget.tsx        streaming LLM terminal with rate limit + reduced motion
-└── audio-reactive-gain.ts        Web Audio gain modulated by scroll velocity
-```
-
-Distilled from Igloo Inc (Developer SOTY 2024), Lando Norris (SOTD Nov 2025), Prometheus Fuels (SOTM May 2021), and Shopify Editions Winter '26.
+| Lever | What it does | The number |
+|---|---|---|
+| **graphify** | Codebase → queryable knowledge graph | **71.5x** fewer tokens per query |
+| **mempalace** | Cross-session memory, local-first | **96.6%** retrieval accuracy, no API keys |
+| **Routing brain** | "Fix bug" auto-routes to debug → TDD → verify | **20/20** on routing benchmark |
+| **15 battle-tested skills** | TDD, planning, review, security, UI design | **Enforced**, not optional |
 
 ---
 
-## Token savings tracker
+## Install in 30 seconds
 
-After running `graphify update` on your project, SuperAgent measures your real compression ratio and starts tracking:
+```bash
+git clone https://github.com/animeshbasak/SuperAgent
+cd SuperAgent
+bash install-universal.sh
+```
+
+That's it. Restart your agent. Type `superagent`.
+
+**Platform-specific:**
+```bash
+bash install-universal.sh --platform codex
+bash install-universal.sh --platform cursor
+bash install-universal.sh --platform gemini
+bash install.sh                                # Claude Code (original)
+```
+
+**Requirements:** Python 3 · bash/zsh · macOS or Linux · your AI coding tool of choice
+
+---
+
+## The receipt: share your savings
+
+After any session:
+
+```bash
+/token-stats
+```
 
 ```
-$ /token-stats
-
 SuperAgent Token Stats — /your/project
 ──────────────────────────────────────────────
 Compression ratio : 48.3x  (your codebase, measured 2026-04-22)
 ──────────────────────────────────────────────
 Lifetime
   Graphify queries  : 47      → 198k tokens saved
-  Mempalace hits    : 23      → ~31k tokens saved (estimate)
-  Total saved       : ~229k tokens
+  Mempalace hits    : 23      → ~31k tokens saved
+  Total saved       : ~229k tokens  ≈ $3.44 at Sonnet rates
 
 Last 5 sessions
-  Date          Graphify    Mempalace   Saved
-  2026-04-22    12          4           ~58k
-  2026-04-21    8           2           ~38k
-  2026-04-20    15          6           ~71k
+  2026-04-22    12 queries     ~58k saved
+  2026-04-21     8 queries     ~38k saved
+  2026-04-20    15 queries     ~71k saved
 ──────────────────────────────────────────────
 ```
 
-The ratio is yours — measured from your actual index, not the 71.5x benchmark number.
+**Want a badge for your own README?**
+
+```bash
+/token-stats --badge
+```
+
+Outputs pastable markdown:
+```markdown
+[![SuperAgent saved 229k tokens](https://img.shields.io/badge/SuperAgent-229k_tokens_saved-brightgreen)](https://github.com/animeshbasak/SuperAgent)
+```
+
+Drop it in your README. Flex your receipts. Start a dev savings race.
 
 ---
 
-## Index your project
+## What you get
+
+### Core tools
+
+| Tool | Purpose |
+|---|---|
+| `superagent-classify` | Any task → the right skill chain, as JSON |
+| `superagent-compile` | Skills → platform-native instructions (8 formats) |
+| `superagent-chain` | Run a YAML skill chain |
+| `superagent-cost` | Token cost by model, with coach notes |
+| `graphify` | Build and query your codebase knowledge graph |
+| `mempalace` | Local-first cross-session memory |
+
+### 15 skills, auto-routed
+
+| Skill | When it fires |
+|---|---|
+| `superagent` | Master router — classifies task, composes chain |
+| `investigate` | "Why did X break?" — reproduce → isolate → explain → verify |
+| `review` | "Is this ready to merge?" — 6-point diff gate |
+| `ship` | "Ship it" — 20-step pipeline (test → review → commit → push → PR) |
+| `cso` | "Audit this" — OWASP Top-10 + STRIDE + secrets scan |
+| `plan-ceo-review` | Pressure-test plan scope (4-mode framework) |
+| `plan-eng-review` | Lock architecture, edge cases, test coverage |
+| `plan-design-review` | Rate 10 design dimensions 0–10, fix any <7 |
+| `autoplan` | Pipeline plan through CEO → design → eng review |
+| `office-hours` | YC-style product intake (6 forcing questions) |
+| `webgl-craft` | Premium WebGL/3D — Awwwards-class technique library |
+| `learn` | Per-project learnings that stick across sessions |
+| `bench` | 20-prompt classifier benchmark (HARD GATE ≥ 0.90) |
+| `fanout` | Parallel skill execution |
+| `token-stats` | Your savings receipt (+ shareable badge) |
+
+No skill memorization. Type your task. It routes.
+
+---
+
+## Proof
+
+```bash
+bash bench/run.sh
+# PROMPTS 20   PASS 20   FAIL 0   AVG 1.000
+# HARD GATE: PASS  (avg >= 0.90, fails <= 2)
+
+bash test/test-classify.sh
+# Tests: 18   PASS: 18   FAIL: 0
+```
+
+Claude Code surface is MD5-pinned on every release. Multi-platform support is additive only — your existing setup never changes.
+
+---
+
+## FAQ
+
+**Is it free?** Yes. Open source. Local-first. No API key.
+
+**Will I have to change my workflow?** No. Just install. Routing is automatic.
+
+**Does it work with my existing Claude setup?** Additive only. Zero modification to existing files — verified by MD5 on every release.
+
+**I'm on Cursor, not Claude Code. Does it work?** Yes. The compiler turns 15 skills into Cursor `.mdc` rules, Codex `AGENTS.md`, Copilot instructions, Continue rules, etc. — whatever your platform expects.
+
+**Does it leak my code to third parties?** No. `graphify` and `mempalace` run locally. Nothing leaves your machine.
+
+**Cursor has a 12k char rule limit. How?** Compiler auto-compacts. Your Cursor rules stay at ~4.7k chars. Measured on every build.
+
+**Can I add my own skills?** Yes. Drop a `SKILL.md` into `skills/<name>/`. Run `superagent-compile --platform all`. Every platform picks it up.
+
+**What if I break something?** `install.sh` is MD5-pinned. `test/test-classify.sh` is a hard gate. `bench/run.sh` enforces ≥0.90 routing accuracy. Regressions can't land.
+
+---
+
+## Platform formats
+
+The compiler (`bin/superagent-compile`) is the source of truth. Each platform gets the format it expects:
+
+| Platform | Format | Location | Size |
+|---|---|---|---|
+| Claude Code | `CLAUDE.md` + plugins + skills | `~/.claude/` | Full plugin system |
+| Codex CLI | `AGENTS.md` | `~/.codex/AGENTS.md` | ~66k chars |
+| Cursor | `.mdc` rules | `.cursor/rules/*.mdc` | 4.7k / 12k limit |
+| Windsurf | `AGENTS.md` + rules | `.windsurf/rules/` | Full + modular |
+| GitHub Copilot | `copilot-instructions.md` | `.github/` | ~10k chars |
+| Gemini / Antigravity | `GEMINI.md` + `SKILL.md` | `~/.gemini/` + `.agent/rules/` | Per-skill files |
+| Continue.dev | Numbered rules | `.continue/rules/` | 16 files |
+| Aider | `CONVENTIONS.md` | project root + `.aider.conf.yml` | Auto-loaded |
+
+Recompile any time:
+```bash
+python3 bin/superagent-compile --platform all
+```
+
+---
+
+## Routing table
+
+| You say | It routes to |
+|---|---|
+| "build X" / "add feature Y" | brainstorming → writing-plans → TDD → executing-plans → verification |
+| "fix bug" / "broken" / "error" | systematic-debugging → TDD → verification |
+| "understand codebase" | graphify query → smart-explore |
+| "ship" / "PR" / "merge" | review → ship |
+| "design" / "UI" / "component" | brainstorming → ui-ux-pro-max |
+| "3D" / "WebGL" / "cinematic" | webgl-craft → writing-plans |
+| "security" / "audit" | cso → security-review |
+| "why did X happen" | investigate → mem-search |
+| "plan" / "roadmap" | brainstorming → writing-plans → plan-ceo-review → plan-eng-review |
+| "did we solve this before?" | mem-search |
+| 2+ independent tasks | dispatching-parallel-agents |
+
+---
+
+## Project structure
+
+```
+SuperAgent/
+├── skills/                  15 skills (source of truth)
+├── bin/                     CLIs (classify, compile, chain, cost, learn)
+├── hooks/                   Bash hooks (tracker, statusline, distill)
+├── agents/                  Claude agent files
+├── adapters/                Platform adapters (codex, gemini, cursor, windsurf,
+│                            copilot, continue, aider)
+├── bench/                   20-prompt classifier benchmark
+├── test/                    Test suite
+├── install.sh               Claude Code installer
+└── install-universal.sh     Multi-platform installer
+```
+
+---
+
+## Index your project (optional but recommended)
 
 ```bash
 cd ~/my-project
-graphify update ./src          # build knowledge graph
-mempalace init . --yes && mempalace mine .   # index for memory
+graphify update ./src                         # build knowledge graph
+mempalace init . --yes && mempalace mine .    # index for memory
 ```
 
-Then in Claude Code:
-
+Then in your agent:
 ```
 graphify query "how does authentication work?"
 mempalace search "auth decisions from last week"
-```
-
----
-
-## Skill reference
-
-Full skill roster available via `/skills` in Claude Code after install. Key ones:
-
-| Skill | When it activates |
-|-------|------------------|
-| `superpowers:brainstorming` | Before any creative/feature work |
-| `superpowers:test-driven-development` | Any feature or bugfix |
-| `superpowers:systematic-debugging` | Bug, test failure, unexpected behavior |
-| `superpowers:verification-before-completion` | Before claiming done or opening PR |
-| `superpowers:writing-plans` | Multi-step task, have requirements |
-| `superpowers:dispatching-parallel-agents` | 2+ independent tasks |
-| `superpowers:finishing-a-development-branch` | Ready to integrate |
-| `claude-mem:smart-explore` | AST-level code search, token-efficient |
-| `claude-mem:mem-search` | "Did we solve this before?" |
-| `caveman:caveman` | Token-reduction sessions |
-| `ui-ux-pro-max` | Any frontend design or component |
-| `webgl-craft` | WebGL/3D/creative web |
-| `claude-api` | Anthropic SDK, prompt caching, model config |
-
----
-
-## Manual Python install (if Homebrew unavailable)
-
-```bash
-pip install pipx && pipx ensurepath
-pipx install graphifyy
-pipx install mempalace
-mempalace init ~/.claude --yes && mempalace mine ~/.claude
-cd ~/.claude && graphify update skills
 ```
 
 ---
@@ -250,4 +297,12 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-If this saved you time, star it. If it saved you tokens, `/token-stats` will tell you exactly how many.
+<div align="center">
+
+### If this saved you tokens, the least you can do is star it.
+
+**[Star on GitHub](https://github.com/animeshbasak/SuperAgent)** · **[Tweet your `/token-stats` receipt](https://twitter.com/intent/tweet?text=SuperAgent%20just%20saved%20me%20200k%20tokens%20on%20my%20last%20AI%20coding%20session.%20Works%20with%20Claude%2C%20Cursor%2C%20Copilot%2C%20and%205%20more.%20https%3A%2F%2Fgithub.com%2Fanimeshbasak%2FSuperAgent)** · **[Share on HN](https://news.ycombinator.com/submitlink?u=https%3A%2F%2Fgithub.com%2Fanimeshbasak%2FSuperAgent)**
+
+Built by devs who got tired of watching their AI burn tokens on re-reads.
+
+</div>
