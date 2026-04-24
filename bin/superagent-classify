@@ -18,12 +18,22 @@ fi
 
 TASK="$1"
 
-# ── locate rules.yaml (relative to this script) ──────────────────────────────
+# ── locate rules.yaml — multiple fallbacks for repo vs installed layouts ─────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RULES_FILE="$SCRIPT_DIR/../skills/superagent/brain/rules.yaml"
+RULES_FILE=""
+for candidate in \
+  "${SUPERAGENT_RULES:-}" \
+  "$SCRIPT_DIR/../skills/superagent/brain/rules.yaml" \
+  "$HOME/.claude/skills/superagent/brain/rules.yaml" \
+  "$PWD/skills/superagent/brain/rules.yaml"; do
+  if [[ -n "$candidate" && -f "$candidate" ]]; then
+    RULES_FILE="$candidate"
+    break
+  fi
+done
 
-if [[ ! -f "$RULES_FILE" ]]; then
-  echo "rules.yaml not found at: $RULES_FILE" >&2
+if [[ -z "$RULES_FILE" ]]; then
+  echo "rules.yaml not found (searched SUPERAGENT_RULES, script-relative, ~/.claude, \$PWD)" >&2
   exit 2
 fi
 

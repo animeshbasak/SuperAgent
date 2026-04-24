@@ -155,7 +155,7 @@ echo ""
 info "Linking 13 SuperAgent skills..."
 
 mkdir -p "$HOME/.claude/skills"
-for skill in superagent token-stats webgl-craft plan-ceo-review plan-eng-review plan-design-review autoplan review investigate ship office-hours cso learn; do
+for skill in superagent token-stats webgl-craft plan-ceo-review plan-eng-review plan-design-review autoplan review investigate ship office-hours cso learn bench fanout; do
   src="$SCRIPT_DIR/skills/$skill"
   dst="$HOME/.claude/skills/$skill"
   if [[ ! -d "$src" ]]; then
