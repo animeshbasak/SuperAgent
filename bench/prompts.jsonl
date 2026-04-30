@@ -28,3 +28,9 @@
 {"id": 19, "prompt": "prepare this repo for a release and push the tag", "archetype": "release", "expected_chain": ["mempalace-wake", "review", "ship"]}
 {"id": 20, "prompt": "debug the test that's flaky on CI", "archetype": "bug", "expected_chain": ["mempalace-wake", "systematic-debugging", "test-driven-development", "verification-before-completion"]}
 # id=20: 'debug' added to bug signal. bug rule fires -> [sys-dbg, tdd] + vbc (build archetype).
+{"id": 21, "prompt": "switch to qwen3-coder:next", "archetype": "switch", "expected_chain": ["mempalace-wake", "superagent-switch"]}
+# id=21: new switch rule routes direct CLI ops (switch/list/canary/auto) to the dedicated superagent-switch skill.
+{"id": 22, "prompt": "list local models", "archetype": "switch", "expected_chain": ["mempalace-wake", "superagent-switch"]}
+{"id": 23, "prompt": "use framer-motion to animate the dropdown", "archetype": "framer-motion", "expected_chain": ["mempalace-wake", "framer-motion", "verification-before-completion"]}
+# id=23: framer-motion is a build archetype, so vbc is appended.
+{"id": 24, "prompt": "wrap the modal in animate presence with exit animation", "archetype": "framer-motion", "expected_chain": ["mempalace-wake", "framer-motion", "verification-before-completion"]}

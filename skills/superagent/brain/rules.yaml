@@ -93,4 +93,20 @@ rules:
     chain: [dispatching-parallel-agents]
     complexity: moderate
 
-build_archetypes: [bug, feature, ui, webgl, refactor]
+  - name: switch
+    # Direct operator for the model/proxy switcher. Routes to the dedicated
+    # superagent-switch skill (NOT auto-fallback, NOT free-llm) when the user
+    # asks for a specific op: list, to, back, canary, status, auto.
+    signal: "(\\bswitch (model\\b|back\\b|backend\\b|to \\S+)|\\brestore anthropic\\b|\\blist local models\\b|\\bcurrent backend\\b|\\bwhat model am i on\\b|/superagent-switch|\\bcanary (qwen|ollama|llama|deepseek)\\S*|\\bauto.?fallback (on|off)\\b)"
+    chain: [superagent-switch]
+    complexity: trivial
+
+  - name: framer-motion
+    # React component-level animation. Fires for explicit framer-motion
+    # mentions OR named animation patterns (page transition, animate
+    # presence, layout animation, stagger, spring, scroll-linked).
+    signal: "\\b(framer.?motion|motion\\.(div|span|button|li|ul|section)|animate ?presence|page transition|layout animation|stagger ?children|spring animation|scroll.?linked|drag gesture|shared layout|exit animation)\\b"
+    chain: [framer-motion]
+    complexity: moderate
+
+build_archetypes: [bug, feature, ui, webgl, refactor, framer-motion]

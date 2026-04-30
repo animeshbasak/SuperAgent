@@ -458,6 +458,224 @@ Markdown report ranked by severity (Critical / High / Medium / Low):
 
 ---
 
+### framer-motion
+> Build production-grade React animation with framer-motion (`motion` API). Triggers on "framer motion", "animate this component", "animate presence", "page transition", "layout animation", "spring animation", "drag/gesture", "scroll-linked animation", "stagger children", "exit animation", "shared layout". Use for component-level motion in a React/Next.js codebase. Routes alongside `ui-ux-pro-max` for design coherence and `webgl-craft` only when the motion is cinematic / 3D.
+
+# framer-motion
+
+Component-level motion intelligence for React. Covers the seven primitives
+that ship most of the value in real apps:
+
+1. **`<motion.*>` primitive** — declarative animate / initial / exit.
+2. **`AnimatePresence`** — exit animations for unmounting components.
+3. **Variants** — orchestrated animation states with `staggerChildren`.
+4. **Layout animations** — `layout` / `layoutId` for shared element transitions.
+5. **Gestures** — `whileHover`, `whileTap`, `drag`, `dragConstraints`.
+6. **Scroll-linked motion** — `useScroll`, `useTransform`, `useMotionValue`.
+7. **Springs vs tweens** — when to use which transition shape.
+
+## When to use
+
+- User types "use framer-motion to …", "animate this", "add a page transition",
+  "stagger these list items", "when the modal closes …", "make this draggable".
+- User asks for **named patterns**: shared layout animation, hero image
+  morphing into a card, scroll-driven parallax, swipeable carousel,
+  orchestrated reveal, micro-interaction on hover/tap.
+- Codebase already imports `framer-motion` or `motion/react` (check
+  `package.json`).
+
+**Do NOT use for:**
+- 3D / WebGL / shader-based motion → `webgl-craft`.
+- Static layout / typography / color decisions → `ui-ux-pro-max`.
+- Rendered video output (HTML → MP4) → `video-craft`.
+- CSS-only transitions / Tailwind `transition-*` utilities — those don't
+  need framer-motion.
+
+## Procedure
+
+### 1. Confirm the dependency
+
+```bash
+grep -E '"(framer-motion|motion)":' package.json || true
+```
+
+- Already installed → continue.
+- Missing → install with the project's package manager:
+  - `pnpm add framer-motion` (or `motion` for v12+)
+  - `npm i framer-motion`
+  - `yarn add framer-motion`
+- App Router projects: most motion components must run client-side. Add
+  `'use client'` at the top of any file using `motion.*`, `AnimatePresence`,
+  `useScroll`, etc.
+
+### 2. Pick the primitive — decision table
+
+| User intent                                    | Primitive                                         |
+| ---------------------------------------------- | ------------------------------------------------- |
+| Fade / slide on mount                          | `<motion.div initial animate transition>`         |
+| Fade / slide on unmount                        | wrap in `<AnimatePresence>` + `exit={...}`        |
+| Modal / drawer open ↔ close                    | `AnimatePresence` + `exit` + `mode="wait"` if needed |
+| Route / page transition (App Router)           | `template.tsx` + `AnimatePresence` (`mode="wait"`) wrapping `{children}` keyed by pathname |
+| List reveal one-by-one                         | parent variants + `staggerChildren` + child variants |
+| Hero image morphs into a detail card           | `layoutId="hero"` on both elements                |
+| Reorder grid / list smoothly                   | `layout` prop on each item                        |
+| Hover / tap micro-interaction                  | `whileHover` / `whileTap`                         |
+| Draggable card, swipeable                      | `drag` / `dragConstraints` / `dragElastic`        |
+| Scroll progress bar                            | `useScroll().scrollYProgress` → `motion.div` width |
+| Parallax / pin-on-scroll                       | `useScroll({ target, offset })` + `useTransform`  |
+| Spring-feel (squishy)                          | `transition={{ type: "spring", stiffness, damping }}` |
+| Smooth ease (no bounce)                        | `transition={{ duration, ease: [0.16, 1, 0.3, 1] }}` |
+
+### 3. Lock the timing language
+
+Use **one** of these three transition presets across the codebase. Don't
+invent new easings ad-hoc — it produces an inconsistent feel.
+
+```ts
+// utils/motion.ts
+export const easeOut: Transition  = { duration: 0.4, ease: [0.16, 1, 0.3, 1] };
+export const easeOutSlow: Transition = { duration: 0.7, ease: [0.16, 1, 0.3, 1] };
+export const spring: Transition   = { type: "spring", stiffness: 380, damping: 32, mass: 0.7 };
+```
+
+Reach for `spring` when the element responds to user input (drag, hover,
+tap). Reach for `easeOut` for entry/exit. Reach for `easeOutSlow` for hero
+or page-level reveals.
+
+### 4. Variants — only when there's orchestration
+
+Variants pay off when:
+
+- A parent triggers child animations (`staggerChildren`, `delayChildren`).
+- The same element animates through three or more named states.
+
+For two-state component-level animation, inline `initial / animate /
+transition` props are simpler and easier to read.
+
+```tsx
+const list = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.06, delayChildren: 0.1 } }
+};
+const item = {
+  hidden: { opacity: 0, y: 16 },
+  show:   { opacity: 1, y: 0, transition: easeOut }
+};
+```
+
+### 5. AnimatePresence — exact rules
+
+- Direct children of `<AnimatePresence>` MUST have a unique, stable `key`
+  prop — otherwise exit animations don't fire.
+- Use `mode="wait"` when the new element should mount only after the old
+  one finishes exiting (page transitions).
+- Use `mode="popLayout"` when items leave inside a flex/grid layout — it
+  briefly removes them from layout flow so siblings don't jump.
+- `initial={false}` on the parent skips the very-first mount animation
+  (avoids a flash on hydration).
+
+### 6. Layout animations — gotchas
+
+- `layout` works on properties FLIP can interpolate (transform/opacity).
+  It does NOT work on `width: auto` → `width: 200px` directly. Wrap the
+  changing element or animate explicit numeric values.
+- `layoutId` requires the same string on the source and target. They must
+  exist in the same `<LayoutGroup>` (or globally if not nested).
+- Layout animation respects `transition`. Pair with a spring for tactile
+  feel.
+
+### 7. Performance — only animate cheap properties
+
+Animate `transform` (`x`, `y`, `scale`, `rotate`) and `opacity`. Avoid
+animating `width`, `height`, `top`, `left`, `box-shadow`, `filter` in hot
+paths — they trigger layout / paint and tank framerate on lower-end
+devices. When you must animate a non-transform property, use `layout` and
+let framer-motion FLIP the change.
+
+For lists with many animated children, set `style={{ willChange: "transform, opacity" }}`
+on items only while they're animating, not permanently — `willChange`
+forces a compositor layer and over-using it costs memory.
+
+### 8. App Router page transitions — minimal recipe
+
+```tsx
+// app/template.tsx
+'use client';
+import { motion, AnimatePresence } from "framer-motion";
+import { usePathname } from "next/navigation";
+
+export default function Template({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={pathname}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+```
+
+`template.tsx` (not `layout.tsx`) is the right file — Next remounts
+templates on every navigation, which is what makes the exit animation
+fire.
+
+### 9. Accessibility — never ignore
+
+Every animation must respect `prefers-reduced-motion`. framer-motion gives
+you `useReducedMotion()`:
+
+```tsx
+const reduce = useReducedMotion();
+<motion.div animate={{ y: reduce ? 0 : 16 }} />
+```
+
+Or globally cap durations to 0 with a `MotionConfig` wrapper. Bouncy
+springs and large translations are the worst offenders for vestibular
+sensitivity — disable them under reduced-motion, don't just shorten them.
+
+## Verification
+
+Before claiming a framer-motion task complete:
+
+- [ ] Component file starts with `'use client'` if it uses motion APIs in
+      App Router.
+- [ ] Exit animation lives inside `<AnimatePresence>` with a stable `key`.
+- [ ] Animated properties are transform / opacity (or `layout` is used).
+- [ ] `useReducedMotion` is honored — no large unguarded translations.
+- [ ] Transition shape matches the codebase preset (don't invent easings).
+- [ ] `npm run typecheck` passes (framer-motion has strict variant types).
+
+## Edge cases
+
+- **Hydration mismatch** — `initial={false}` on the outermost
+  `AnimatePresence` skips the SSR-vs-client first-render diff.
+- **Items pop out of layout on exit** — switch `mode="wait"` →
+  `mode="popLayout"`.
+- **`layoutId` morph jumps** — both elements must mount within the same
+  layout group, and the morph properties must be transform-compatible.
+- **Drag against scroll** — set `dragDirectionLock` and constrain on the
+  axis you want; otherwise touch users can't scroll past the draggable.
+- **Hover stuck on touch devices** — `whileHover` fires on touch-down on
+  some browsers. Pair with `whileTap` and add a media-query guard.
+- **Bundle size concern** — import from `framer-motion/dom` for
+  non-React-DOM use (rare); for React, the v11+ tree-shaking is good
+  enough that explicit dynamic imports usually aren't needed.
+
+## References
+
+- Official: https://www.framer.com/motion/
+- v12 (rebranded to `motion`): https://motion.dev/
+- App Router patterns: see `template.tsx` recipe above.
+
+---
+
 ### free-llm
 > Route Claude Code through free or local LLMs via the free-claude-code transparent proxy on :18082. Triggers on "switch to free", "use local model", "no Anthropic key", "ollama", "deepseek", "use local llm", "free LLM". Privacy default is local-only (Ollama / LM Studio / llama.cpp); cloud free-tier (NIM / OpenRouter / DeepSeek) is opt-in. Token-savings questions stay with token-stats.
 
@@ -1375,6 +1593,131 @@ If the chain contains only `mempalace-wake` (no rule matched), show the top-3 ca
 
 ## Verification
 After each skill runs, require the skill's own output. For build/fix chains, the final `verification-before-completion` must pass before declaring done.
+
+---
+
+### superagent-switch
+> Drive the `superagent-switch` CLI to inspect, swap, or restore the active LLM backend. Triggers on "list local models", "switch to <model>", "switch back", "restore anthropic", "canary <model>", "what model am i on", "auto fallback on/off", "/superagent-switch <op>". Use when the user wants direct, surgical control over the model swap — not when they're asking *whether* to switch (that is `auto-fallback`) or *how to set up* the proxy (that is `free-llm`).
+
+# superagent-switch
+
+Surgical operator for the cost-aware proxy / model switcher. Wraps the
+`superagent-switch` CLI in a thin, deterministic skill so the agent always
+runs the *right* subcommand, parses output the same way, and reports state
+back to the user in a consistent shape.
+
+## When to use
+
+- User typed `/superagent-switch <op>` (one of: `list`, `to`, `back`,
+  `canary`, `status`, `auto`).
+- User said "list local models", "switch to qwen3", "switch back to
+  Anthropic", "what backend am I on", "run a canary on …", "turn auto-fallback
+  on/off".
+- A peer skill (`auto-fallback`, `free-llm`) needs to perform the actual
+  switch — it dispatches here.
+
+**Do NOT use for:**
+- Deciding *whether* to switch — that is `auto-fallback`.
+- First-time proxy install / setup — that is `free-llm`.
+- Token-savings questions — that is `token-stats`.
+
+## Subcommand routing
+
+| Op                          | What it does                                            | When |
+| --------------------------- | ------------------------------------------------------- | ---- |
+| `list`                      | Enumerate detected local models (Ollama / LM Studio / llama.cpp). Always safe; no state change. | First call when the user asks "what's available" or before `to`. |
+| `to <model>`                | Set `ANTHROPIC_BASE_URL` → `http://localhost:18082`, set token, route Claude Code through the free-claude-code proxy with the given local model. | After `canary` passes, or when user explicitly demands the swap. |
+| `back`                      | Unset proxy env, restore the prior `ANTHROPIC_API_KEY`. | User says "switch back", "restore anthropic", "kill local". |
+| `canary <model> --depth=N`  | Run an N-step Read → Edit → Bash sanity probe against the model. Default N=3. | Always before `to <model>` unless user explicitly skips. |
+| `status`                    | Show current backend, model, auto-flag, last canary. No state change. | Health check, "what am I on". |
+| `auto on` / `auto off`      | Toggle `~/.superagent/auto-fallback.flag`.              | User says "turn auto on/off". |
+| `help`                      | Print CLI help.                                         | Unknown op. |
+
+## Procedure
+
+### 0. Parse the argument
+
+If invoked via `/superagent-switch <args>`, the first token is the
+subcommand. Default to `status` if no subcommand is given (safest read-only
+op). If `args` look like a bare model name (e.g. `qwen2.5-coder:7b`), treat
+as `to <model>` and **require** a `canary` first — never bypass the canary
+unless the user explicitly types `--no-canary`.
+
+### 1. Verify the CLI exists
+
+```bash
+command -v superagent-switch
+```
+
+If missing, point user to `bundles/free-claude-code/install.sh` and stop.
+Do not attempt to install via `npm` / `pip` / `brew` directly.
+
+### 2. Run the subcommand
+
+| User intent                                      | Exact command                                  |
+| ------------------------------------------------ | ---------------------------------------------- |
+| "what's available"                               | `superagent-switch list`                       |
+| "what am I on right now"                         | `superagent-switch status`                     |
+| "switch to qwen3-coder:next" (first time)        | `superagent-switch canary qwen3-coder:next --depth=3` then on pass `superagent-switch to qwen3-coder:next` |
+| "switch back to anthropic"                       | `superagent-switch back`                       |
+| "test if qwen2.5 works without switching"        | `superagent-switch canary qwen2.5-coder:7b --depth=3` |
+| "auto-fallback on" / "off"                       | `superagent-switch auto on` / `auto off`       |
+
+### 3. Report the result back
+
+After every op, print **three lines** to the user:
+
+1. **What ran** — exact CLI command.
+2. **What changed** — diff of state (backend / model / auto-flag).
+3. **What's next** — restart Claude Code if the backend flipped, or "no
+   action required" if it was a read-only op.
+
+Example after a successful `to qwen3-coder:next`:
+
+```
+ran:    superagent-switch to qwen3-coder:next
+state:  backend Anthropic → free-claude-code (localhost:18082) · model → qwen3-coder:next
+next:   restart Claude Code so the new env is picked up
+```
+
+### 4. Failure handling
+
+- **Canary fails** → DO NOT call `to`. Surface the canary log verbatim and
+  ask the user: try a different model, wait, or stay on Anthropic.
+- **`to` fails** (proxy down, port conflict) → run `superagent-switch
+  status` to confirm current state, then prompt to run `free-llm setup`.
+- **`back` fails** (env restore broken) → tell the user to manually
+  `unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN` and restart their shell;
+  do not silently retry.
+
+### 5. Never
+
+- Run `to <model>` without a passing canary (unless `--no-canary`).
+- Edit `~/.superagent/state.json` by hand — always go through the CLI.
+- Touch anything in `~/.claude/` — switcher state lives in `~/.superagent/`.
+- Skip restart instructions after a backend flip.
+
+## Verification
+
+After the op, the skill is done iff:
+
+- [ ] CLI exited 0.
+- [ ] If state changed: `superagent-switch status` confirms the new state.
+- [ ] User has been told whether they need to restart Claude Code.
+
+## Slash command
+
+A Claude Code slash command at `commands/superagent-switch.md` invokes this
+skill with `$ARGUMENTS` so users can type:
+
+```
+/superagent-switch list
+/superagent-switch to qwen3-coder:next
+/superagent-switch back
+/superagent-switch canary qwen2.5-coder:7b
+/superagent-switch status
+/superagent-switch auto on
+```
 
 ---
 

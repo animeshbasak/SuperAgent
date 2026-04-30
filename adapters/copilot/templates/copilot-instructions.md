@@ -88,6 +88,24 @@ For each of: Broken Access Control, Cryptographic Failures, Injection, Insecure 
 *(Full instructions available in SuperAgent skills directory)*
 
 
+### framer-motion
+> Build production-grade React animation with framer-motion (`motion` API). Triggers on "framer motion", "animate this component", "animate presence", "page transition", "layout animation", "spring animation", "drag/gesture", "scroll-linked animation", "stagger children", "exit animation", "shared layout". Use for component-level motion in a React/Next.js codebase. Routes alongside `ui-ux-pro-max` for design coherence and `webgl-craft` only when the motion is cinematic / 3D.
+
+# framer-motion
+
+Component-level motion intelligence for React. Covers the seven primitives
+that ship most of the value in real apps:
+
+1. **`<motion.*>` primitive** — declarative animate / initial / exit.
+2. **`AnimatePresence`** — exit animations for unmounting components.
+3. **Variants** — orchestrated animation states with `staggerChildren`.
+4. **Layout animations** — `layout` / `layoutId` for shared element transitions.
+5. **Gestures** — `whileHover`, `whileTap`, `drag`, `dragConstraints`.
+6
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
 ### free-llm
 > Route Claude Code through free or local LLMs via the free-claude-code transparent proxy on :18082. Triggers on "switch to free", "use local model", "no Anthropic key", "ollama", "deepseek", "use local llm", "free LLM". Privacy default is local-only (Ollama / LM Studio / llama.cpp); cloud free-tier (NIM / OpenRouter / DeepSeek) is opt-in. Token-savings questions stay with token-stats.
 
@@ -255,6 +273,26 @@ For each bullet, produce explicit findings with file:line references.
 ## The 20 Steps
 
 ### 1. Detect platf
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### superagent-switch
+> Drive the `superagent-switch` CLI to inspect, swap, or restore the active LLM backend. Triggers on "list local models", "switch to <model>", "switch back", "restore anthropic", "canary <model>", "what model am i on", "auto fallback on/off", "/superagent-switch <op>". Use when the user wants direct, surgical control over the model swap — not when they're asking *whether* to switch (that is `auto-fallback`) or *how to set up* the proxy (that is `free-llm`).
+
+# superagent-switch
+
+Surgical operator for the cost-aware proxy / model switcher. Wraps the
+`superagent-switch` CLI in a thin, deterministic skill so the agent always
+runs the *right* subcommand, parses output the same way, and reports state
+back to the user in a consistent shape.
+
+## When to use
+
+- User typed `/superagent-switch <op>` (one of: `list`, `to`, `back`,
+  `canary`, `status`, `auto`).
+- User said "list local models", "switch to qwen3", "switch back to
+  Anthropic", "what backend am I
 
 *(Full instructions available in SuperAgent skills directory)*
 
