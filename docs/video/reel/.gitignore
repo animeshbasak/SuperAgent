@@ -1,0 +1,4 @@
+# Render outputs — published artifact lives in docs/media/, build outputs ignored
+*.mp4
+.hyperframes-cache/
+node_modules/

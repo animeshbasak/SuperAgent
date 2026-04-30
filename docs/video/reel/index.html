@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        margin: 0; width: 1920px; height: 1080px;
+        overflow: hidden; background: #000;
+        font-family: 'Inter',-apple-system,sans-serif;
+        color: #f5f5f5;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      SuperAgent Feature Reel — 30s @ 30fps · 1920x1080
+      0.0 -  4.0   Brand reveal
+      4.0 - 11.0   Terminal demo
+     11.0 - 18.0   Token-savings chart (71.5x)
+     18.0 - 25.0   8 platforms · 5 domains
+     25.0 - 30.0   CTA — install + URL
+    -->
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="30"
+      data-width="1920"
+      data-height="1080"
+      style="
+        position:relative; width:1920px; height:1080px; overflow:hidden;
+        background:linear-gradient(135deg,#070914 0%,#0f1426 50%,#1a1235 100%);
+      "
+    >
+
+      <!-- ambient glow + grid (full duration, no clip class — these are decoration) -->
+      <div id="bg-glow" style="
+        position:absolute; inset:0;
+        background:radial-gradient(circle at 50% 55%, rgba(124,58,237,0.32), transparent 65%);
+        pointer-events:none; opacity:0.42;
+      "></div>
+      <div id="bg-grid" style="
+        position:absolute; inset:0; opacity:0.06;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px);
+        background-size:48px 48px;
+        pointer-events:none;
+      "></div>
+
+      <!-- ============== SCENE 1 — Brand reveal (0 - 4s) ============== -->
+      <div id="scene-brand" class="clip"
+           data-start="0" data-duration="4" data-track-index="1"
+           style="position:absolute; inset:0; display:flex; flex-direction:column;
+                  align-items:center; justify-content:center; gap:28px;">
+        <div id="brand-logo" style="
+          width:160px; height:160px; border-radius:36px;
+          background:linear-gradient(135deg,#7c3aed 0%,#3b82f6 60%,#06b6d4 100%);
+          box-shadow:0 30px 90px rgba(124,58,237,0.55), inset 0 0 40px rgba(255,255,255,0.18);
+          display:flex; align-items:center; justify-content:center;
+          font-size:88px; font-weight:800; color:#fff; letter-spacing:-0.05em;
+        ">SA</div>
+        <h1 id="brand-name" style="
+          margin:0; font-size:128px; font-weight:800; letter-spacing:-0.04em;
+          background:linear-gradient(135deg,#fff,#a78bfa);
+          -webkit-background-clip:text; background-clip:text; color:transparent;
+        ">SuperAgent</h1>
+        <p id="brand-tag" style="
+          margin:0; font-size:34px; font-weight:400; letter-spacing:-0.01em;
+          color:rgba(245,245,245,0.78); max-width:1200px; text-align:center;
+        ">Stop paying for tokens your AI burned re-reading your codebase.</p>
+        <p id="brand-sub" style="
+          margin:0; font-size:22px; font-weight:500; letter-spacing:0.18em;
+          color:rgba(167,139,250,0.9); text-transform:uppercase;
+        ">v2.2 — multi-domain · cost-aware routing</p>
+      </div>
+
+      <!-- ============== SCENE 2 — Terminal demo (4 - 11s) ============== -->
+      <div id="scene-term" class="clip"
+           data-start="4" data-duration="7" data-track-index="1"
+           style="position:absolute; inset:0; display:flex; flex-direction:column;
+                  align-items:center; justify-content:center; padding:0 120px;">
+        <span class="scene-eyebrow" style="
+          font-size:22px; letter-spacing:0.3em; text-transform:uppercase;
+          color:#a78bfa; margin-bottom:24px; font-weight:500;
+        ">01 — One Router. Every Skill.</span>
+        <div id="term-window" style="
+          width:1400px; border-radius:18px; overflow:hidden;
+          background:#0a0d1a; border:1px solid rgba(255,255,255,0.08);
+          box-shadow:0 40px 100px rgba(0,0,0,0.55);
+          font-family:'JetBrains Mono','Fira Code',monospace;
+        ">
+          <div style="
+            height:42px; background:#11142a; display:flex; align-items:center;
+            padding:0 18px; gap:8px; border-bottom:1px solid rgba(255,255,255,0.05);
+          ">
+            <div style="width:12px;height:12px;border-radius:50%;background:#ff5f57;"></div>
+            <div style="width:12px;height:12px;border-radius:50%;background:#febc2e;"></div>
+            <div style="width:12px;height:12px;border-radius:50%;background:#28c840;"></div>
+            <div style="margin-left:18px;font-size:14px;color:rgba(255,255,255,0.45);letter-spacing:0.05em;">~/your-project — superagent</div>
+          </div>
+          <div style="padding:32px 40px; font-size:24px; line-height:1.55; min-height:520px;">
+            <div id="t-l1" style="color:#f5f5f5;">
+              <span style="color:#7c3aed;">$</span> /superagent <span style="color:#a78bfa;">"fix the broken auth middleware"</span>
+            </div>
+            <div id="t-l2" style="color:rgba(245,245,245,0.55); margin-top:18px;">
+              <span style="color:#06b6d4;">[SA]</span> classify → <span style="color:#fbbf24;">complexity:</span> moderate · <span style="color:#fbbf24;">domain:</span> code
+            </div>
+            <div id="t-l3" style="color:rgba(245,245,245,0.78); margin-top:14px;">
+              <span style="color:#06b6d4;">[SA]</span> routing chain:
+            </div>
+            <div id="t-l4" style="color:#f5f5f5; margin-top:14px; padding-left:48px;">
+              systematic-debugging → TDD → verification
+            </div>
+            <div id="t-l5" style="color:rgba(245,245,245,0.55); margin-top:18px;">
+              <span style="color:#06b6d4;">[SA]</span> graphify query &nbsp;<span style="color:#22c55e;">2,640 tokens</span>&nbsp;(saved 184k)
+            </div>
+            <div id="t-l6" style="color:rgba(245,245,245,0.55); margin-top:14px;">
+              <span style="color:#06b6d4;">[SA]</span> mempalace recall · prior decision found
+            </div>
+            <div id="t-l7" style="color:#22c55e; margin-top:18px; font-weight:600;">
+              ✓ root cause: token signing key rotation drift · patch staged
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== SCENE 3 — Token-savings chart (11 - 18s) ============== -->
+      <div id="scene-chart" class="clip"
+           data-start="11" data-duration="7" data-track-index="1"
+           style="position:absolute; inset:0; display:flex; flex-direction:column;
+                  align-items:center; justify-content:center; padding:0 200px;">
+        <span class="scene-eyebrow" style="
+          font-size:22px; letter-spacing:0.3em; text-transform:uppercase;
+          color:#a78bfa; margin-bottom:18px; font-weight:500;
+        ">02 — The Receipt</span>
+        <h2 id="chart-headline" style="
+          margin:0 0 56px 0; font-size:88px; font-weight:700; letter-spacing:-0.03em;
+          text-align:center; line-height:1.05;
+        ">Same query. <span style="color:#22c55e;">71.5×</span> fewer tokens.</h2>
+
+        <div id="chart-rows" style="width:1300px; display:flex; flex-direction:column; gap:38px;">
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div style="display:flex; justify-content:space-between; font-size:24px;">
+              <span style="color:rgba(245,245,245,0.7); letter-spacing:0.04em;">WITHOUT SUPERAGENT</span>
+              <span id="bar-a-label" style="color:#ef4444; font-weight:600; font-variant-numeric:tabular-nums;">187,000 tok · $2.80</span>
+            </div>
+            <div style="height:46px; background:rgba(255,255,255,0.05); border-radius:6px; overflow:hidden;">
+              <div id="bar-a" style="
+                height:100%; width:100%;
+                background:linear-gradient(90deg,#7f1d1d,#ef4444);
+                box-shadow:0 0 30px rgba(239,68,68,0.4);
+                transform-origin:left center;
+              "></div>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div style="display:flex; justify-content:space-between; font-size:24px;">
+              <span style="color:rgba(245,245,245,0.7); letter-spacing:0.04em;">WITH SUPERAGENT</span>
+              <span id="bar-b-label" style="color:#22c55e; font-weight:600; font-variant-numeric:tabular-nums;">2,600 tok · $0.04</span>
+            </div>
+            <div style="height:46px; background:rgba(255,255,255,0.05); border-radius:6px; overflow:hidden;">
+              <div id="bar-b" style="
+                height:100%; width:100%;
+                background:linear-gradient(90deg,#14532d,#22c55e);
+                box-shadow:0 0 30px rgba(34,197,94,0.45);
+                transform-origin:left center;
+              "></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="chart-foot" style="
+          margin-top:48px; font-size:22px; color:rgba(245,245,245,0.55);
+          letter-spacing:0.02em; text-align:center;
+        ">graphify + mempalace + claude-mem · measured on a 50-file repo</div>
+      </div>
+
+      <!-- ============== SCENE 4 — Platforms + Domains (18 - 25s) ============== -->
+      <div id="scene-platforms" class="clip"
+           data-start="18" data-duration="7" data-track-index="1"
+           style="position:absolute; inset:0; display:flex; flex-direction:column;
+                  align-items:center; justify-content:center; padding:0 160px;">
+        <span class="scene-eyebrow" style="
+          font-size:22px; letter-spacing:0.3em; text-transform:uppercase;
+          color:#a78bfa; margin-bottom:20px; font-weight:500;
+        ">03 — Works Where You Already Code</span>
+        <h2 id="plat-headline" style="
+          margin:0 0 56px 0; font-size:80px; font-weight:700; letter-spacing:-0.03em;
+          text-align:center; line-height:1.05;
+        ">8 tools. <span style="color:#a78bfa;">5 domains.</span> One installer.</h2>
+
+        <div id="plat-grid" style="
+          display:grid; grid-template-columns:repeat(4,1fr); gap:18px;
+          width:1500px; margin-bottom:42px;
+        ">
+          <div class="plat-cell" style="padding:22px 18px;border-radius:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);font-size:22px;font-weight:600;text-align:center;letter-spacing:-0.01em;">Claude Code</div>
+          <div class="plat-cell" style="padding:22px 18px;border-radius:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);font-size:22px;font-weight:600;text-align:center;letter-spacing:-0.01em;">Codex CLI</div>
+          <div class="plat-cell" style="padding:22px 18px;border-radius:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);font-size:22px;font-weight:600;text-align:center;letter-spacing:-0.01em;">Cursor</div>
+          <div class="plat-cell" style="padding:22px 18px;border-radius:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);font-size:22px;font-weight:600;text-align:center;letter-spacing:-0.01em;">Windsurf</div>
+          <div class="plat-cell" style="padding:22px 18px;border-radius:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);font-size:22px;font-weight:600;text-align:center;letter-spacing:-0.01em;">GH Copilot</div>
+          <div class="plat-cell" style="padding:22px 18px;border-radius:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);font-size:22px;font-weight:600;text-align:center;letter-spacing:-0.01em;">Gemini · Antigravity</div>
+          <div class="plat-cell" style="padding:22px 18px;border-radius:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);font-size:22px;font-weight:600;text-align:center;letter-spacing:-0.01em;">Continue.dev</div>
+          <div class="plat-cell" style="padding:22px 18px;border-radius:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);font-size:22px;font-weight:600;text-align:center;letter-spacing:-0.01em;">Aider</div>
+        </div>
+
+        <div id="plat-domains" style="display:flex; gap:14px; flex-wrap:wrap; justify-content:center; max-width:1500px;">
+          <span class="dom-pill" style="padding:14px 28px;border-radius:999px;background:linear-gradient(135deg,rgba(124,58,237,0.22),rgba(59,130,246,0.18));border:1px solid rgba(167,139,250,0.35);font-size:22px;font-weight:600;letter-spacing:-0.01em;">Code</span>
+          <span class="dom-pill" style="padding:14px 28px;border-radius:999px;background:linear-gradient(135deg,rgba(124,58,237,0.22),rgba(59,130,246,0.18));border:1px solid rgba(167,139,250,0.35);font-size:22px;font-weight:600;letter-spacing:-0.01em;">Design / UI</span>
+          <span class="dom-pill" style="padding:14px 28px;border-radius:999px;background:linear-gradient(135deg,rgba(124,58,237,0.22),rgba(59,130,246,0.18));border:1px solid rgba(167,139,250,0.35);font-size:22px;font-weight:600;letter-spacing:-0.01em;">WebGL</span>
+          <span class="dom-pill" style="padding:14px 28px;border-radius:999px;background:linear-gradient(135deg,rgba(124,58,237,0.22),rgba(59,130,246,0.18));border:1px solid rgba(167,139,250,0.35);font-size:22px;font-weight:600;letter-spacing:-0.01em;">Video</span>
+          <span class="dom-pill" style="padding:14px 28px;border-radius:999px;background:linear-gradient(135deg,rgba(124,58,237,0.22),rgba(59,130,246,0.18));border:1px solid rgba(167,139,250,0.35);font-size:22px;font-weight:600;letter-spacing:-0.01em;">Security</span>
+        </div>
+      </div>
+
+      <!-- ============== SCENE 5 — CTA (25 - 30s) ============== -->
+      <div id="scene-cta" class="clip"
+           data-start="25" data-duration="5" data-track-index="1"
+           style="position:absolute; inset:0; display:flex; flex-direction:column;
+                  align-items:center; justify-content:center; gap:38px;">
+        <h2 id="cta-headline" style="
+          margin:0; font-size:104px; font-weight:800; letter-spacing:-0.03em;
+          text-align:center; line-height:1.0;
+        ">Install in 30 seconds.</h2>
+
+        <div id="cta-cmd" style="
+          padding:26px 44px; border-radius:14px;
+          background:#0a0d1a; border:1px solid rgba(167,139,250,0.4);
+          box-shadow:0 20px 60px rgba(124,58,237,0.35);
+          font-family:'JetBrains Mono','Fira Code',monospace;
+          font-size:30px; color:#f5f5f5;
+        ">
+          <span style="color:#7c3aed;">$</span>&nbsp;bash install-universal.sh
+        </div>
+
+        <div id="cta-url" style="
+          font-size:30px; font-weight:600; color:rgba(245,245,245,0.85);
+          letter-spacing:-0.01em;
+        ">github.com/animeshbasak/SuperAgent</div>
+
+        <div id="cta-foot" style="
+          margin-top:6px; display:flex; gap:32px; font-size:22px;
+          color:rgba(245,245,245,0.55); letter-spacing:0.02em;
+        ">
+          <span>MIT</span>
+          <span>·</span>
+          <span>Local-first</span>
+          <span>·</span>
+          <span>Free LLM fallback</span>
+        </div>
+      </div>
+
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      /* Scene 1 — brand (0-4s) */
+      tl.from("#brand-logo",
+        { opacity: 0, scale: 0.55, rotation: -8, duration: 1.0, ease: "power3.out" }, 0);
+      tl.from("#brand-name",
+        { opacity: 0, y: 50, duration: 0.85, ease: "power3.out" }, 0.45);
+      tl.from("#brand-tag",
+        { opacity: 0, y: 24, duration: 0.8, ease: "power3.out" }, 0.85);
+      tl.from("#brand-sub",
+        { opacity: 0, y: 16, duration: 0.7, ease: "power2.out" }, 1.2);
+      tl.to("#scene-brand",
+        { opacity: 0, duration: 0.5, ease: "power2.in" }, 3.5);
+      tl.set("#scene-brand", { opacity: 0 }, 4.0);
+
+      /* Scene 2 — terminal (4-11s) */
+      tl.from("#scene-term .scene-eyebrow",
+        { opacity: 0, y: 18, duration: 0.6, ease: "power3.out" }, 4.0);
+      tl.from("#term-window",
+        { opacity: 0, y: 40, scale: 0.97, duration: 0.7, ease: "power3.out" }, 4.2);
+      tl.from("#t-l1", { opacity: 0, x: -20, duration: 0.45, ease: "power2.out" }, 4.7);
+      tl.from("#t-l2", { opacity: 0, x: -20, duration: 0.45, ease: "power2.out" }, 5.2);
+      tl.from("#t-l3", { opacity: 0, x: -20, duration: 0.45, ease: "power2.out" }, 5.7);
+      tl.from("#t-l4", { opacity: 0, x: -20, duration: 0.45, ease: "power2.out" }, 6.1);
+      tl.from("#t-l5", { opacity: 0, x: -20, duration: 0.45, ease: "power2.out" }, 6.7);
+      tl.from("#t-l6", { opacity: 0, x: -20, duration: 0.45, ease: "power2.out" }, 7.3);
+      tl.from("#t-l7", { opacity: 0, x: -20, scale: 0.96, duration: 0.6, ease: "back.out(1.4)" }, 8.0);
+      tl.to("#scene-term",
+        { opacity: 0, duration: 0.5, ease: "power2.in" }, 10.5);
+      tl.set("#scene-term", { opacity: 0 }, 11.0);
+
+      /* Scene 3 — chart (11-18s) */
+      tl.from("#scene-chart .scene-eyebrow",
+        { opacity: 0, y: 18, duration: 0.6, ease: "power3.out" }, 11.0);
+      tl.from("#chart-headline",
+        { opacity: 0, y: 30, duration: 0.8, ease: "power3.out" }, 11.2);
+      tl.from("#bar-a",
+        { scaleX: 0, duration: 1.0, ease: "power3.out" }, 11.8);
+      tl.from("#bar-a-label",
+        { opacity: 0, x: 20, duration: 0.5, ease: "power2.out" }, 12.4);
+      tl.from("#bar-b",
+        { scaleX: 0.014, duration: 1.4, ease: "power4.out" }, 13.4);
+      tl.from("#bar-b-label",
+        { opacity: 0, x: 20, duration: 0.5, ease: "power2.out" }, 14.6);
+      tl.from("#chart-foot",
+        { opacity: 0, y: 12, duration: 0.7, ease: "power2.out" }, 15.0);
+      tl.to("#scene-chart",
+        { opacity: 0, duration: 0.5, ease: "power2.in" }, 17.5);
+      tl.set("#scene-chart", { opacity: 0 }, 18.0);
+
+      /* Scene 4 — platforms (18-25s) */
+      tl.from("#scene-platforms .scene-eyebrow",
+        { opacity: 0, y: 18, duration: 0.6, ease: "power3.out" }, 18.0);
+      tl.from("#plat-headline",
+        { opacity: 0, y: 30, duration: 0.8, ease: "power3.out" }, 18.2);
+      tl.from(".plat-cell",
+        { opacity: 0, y: 24, scale: 0.92, duration: 0.55, ease: "power3.out", stagger: 0.06 }, 18.9);
+      tl.from(".dom-pill",
+        { opacity: 0, y: 14, scale: 0.9, duration: 0.5, ease: "back.out(1.4)", stagger: 0.07 }, 20.4);
+      tl.to("#scene-platforms",
+        { opacity: 0, duration: 0.5, ease: "power2.in" }, 24.5);
+      tl.set("#scene-platforms", { opacity: 0 }, 25.0);
+
+      /* Scene 5 — CTA (25-30s) */
+      tl.from("#cta-headline",
+        { opacity: 0, y: 36, duration: 0.85, ease: "power3.out" }, 25.0);
+      tl.from("#cta-cmd",
+        { opacity: 0, y: 24, scale: 0.96, duration: 0.7, ease: "power3.out" }, 25.6);
+      tl.from("#cta-url",
+        { opacity: 0, y: 16, duration: 0.6, ease: "power2.out" }, 26.2);
+      tl.from("#cta-foot",
+        { opacity: 0, duration: 0.6, ease: "power2.out" }, 26.7);
+
+      /* Ambient drift */
+      tl.to("#bg-glow",
+        { opacity: 0.7, duration: 30, ease: "none" }, 0);
+      tl.to("#bg-grid",
+        { opacity: 0.12, duration: 30, ease: "none" }, 0);
+
+      /* Pin timeline to 30s */
+      tl.set({}, {}, 30);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

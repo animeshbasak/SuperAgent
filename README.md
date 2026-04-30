@@ -4,7 +4,13 @@
 
 ### Stop paying for tokens your AI burned re-reading your codebase.
 
-**Across 8 AI tools, 4 domains, and any LLM — paid or free.**
+**Across 8 AI tools, 5 domains, and any LLM — paid or free.**
+
+<a href="https://github.com/animeshbasak/SuperAgent/raw/main/docs/media/superagent-v2.2-reel.mp4">
+  <img src="docs/media/superagent-v2.2-reel-poster.png" alt="SuperAgent v2.2 — 30-second feature reel (click to play)" width="820" />
+</a>
+
+<sub>30-second feature reel · rendered deterministically with <a href="https://github.com/heygen-com/hyperframes">hyperframes</a> via <code>/video-craft</code> · <a href="https://github.com/animeshbasak/SuperAgent/raw/main/docs/media/superagent-v2.2-reel.mp4">download MP4 (5.3 MB)</a></sub>
 
 ```bash
 git clone https://github.com/animeshbasak/SuperAgent
@@ -15,6 +21,7 @@ bash SuperAgent/install-universal.sh
 [![Platforms](https://img.shields.io/badge/platforms-8-blue)](#works-with-every-ai-coding-tool-you-use)
 [![Token Savings](https://img.shields.io/badge/token_savings-95%25-brightgreen)](#the-receipt-share-your-savings)
 [![Free LLM Fallback](https://img.shields.io/badge/free_LLM-fallback-orange)](#your-ai-never-runs-out)
+[![Reel](https://img.shields.io/badge/feature_reel-30s-purple)](docs/media/superagent-v2.2-reel.mp4)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
@@ -271,6 +278,8 @@ Author HTML compositions. Render frame-accurate MP4s. Same router, same savings.
 ```
 
 5 technique domains, 4 production recipes (hello-world, product-ad-30s, data-driven-chart, lower-third-overlay). Distilled from the open-source [hyperframes](https://github.com/heygen-com/hyperframes) framework.
+
+**The reel at the top of this README** was authored and rendered through the same pipeline. Source composition: [`docs/video/reel/index.html`](docs/video/reel/index.html). Output: [`docs/media/superagent-v2.2-reel.mp4`](docs/media/superagent-v2.2-reel.mp4) — 1920×1080, 30 fps, 30 s, 5.3 MB.
 
 ---
 
