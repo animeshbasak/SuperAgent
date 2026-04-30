@@ -25,6 +25,10 @@ python3 "$REPO_ROOT/bin/superagent-compile" --platform continue \
 
 CONTINUE_RULES="$TARGET/.continue/rules"
 mkdir -p "$CONTINUE_RULES"
+# Purge prior superagent-prefixed rules so renames (e.g. inserting framer-motion
+# at slot 07 shifts free-llm/investigate/... down) don't leave stale duplicates
+# behind. Only superagent-* files are removed; user-authored rules survive.
+rm -f "$CONTINUE_RULES"/*-superagent-*.md
 cp "$SCRIPT_DIR/templates/rules/"*.md "$CONTINUE_RULES/"
 ok "Rules installed at $CONTINUE_RULES/"
 

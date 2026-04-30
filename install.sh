@@ -151,17 +151,19 @@ if [[ -f "$SCRIPT_DIR/agents/superagent-brain.md" && ! -f "$AGENTS_DIR/superagen
 fi
 echo ""
 
-# ── Step 6: Link SuperAgent v2 skills into ~/.claude/skills/ ──────────────────
-info "Linking 13 SuperAgent skills..."
+# ── Step 6: Link every skill in skills/ into ~/.claude/skills/ ────────────────
+# Auto-discovery — picks up any new skill dropped into skills/<name>/SKILL.md
+# without needing to edit this loop. Single source of truth = the repo.
+SKILL_COUNT=$(find "$SCRIPT_DIR/skills" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+info "Linking $SKILL_COUNT SuperAgent skills (auto-discovered)..."
 
 mkdir -p "$HOME/.claude/skills"
-for skill in superagent token-stats webgl-craft plan-ceo-review plan-eng-review plan-design-review autoplan review investigate ship office-hours cso learn bench fanout; do
-  src="$SCRIPT_DIR/skills/$skill"
+for src in "$SCRIPT_DIR/skills"/*/; do
+  [[ -d "$src" ]] || continue
+  skill=$(basename "$src")
+  # Only link skills that have a SKILL.md
+  [[ -f "$src/SKILL.md" ]] || { warn "skip: $skill (no SKILL.md)"; continue; }
   dst="$HOME/.claude/skills/$skill"
-  if [[ ! -d "$src" ]]; then
-    warn "skip: $skill (not present)"
-    continue
-  fi
   rm -rf "$dst"
   if ln -sfn "$src" "$dst" 2>/dev/null; then
     ok "linked: $skill"
@@ -171,6 +173,28 @@ for skill in superagent token-stats webgl-craft plan-ceo-review plan-eng-review 
   fi
 done
 echo ""
+
+# ── Step 6b: Link slash commands into ~/.claude/commands/ ────────────────────
+if [[ -d "$SCRIPT_DIR/commands" ]]; then
+  CMD_COUNT=$(find "$SCRIPT_DIR/commands" -mindepth 1 -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')
+  if [[ "$CMD_COUNT" -gt 0 ]]; then
+    info "Linking $CMD_COUNT slash command(s)..."
+    mkdir -p "$HOME/.claude/commands"
+    for src in "$SCRIPT_DIR/commands"/*.md; do
+      [[ -f "$src" ]] || continue
+      cmd=$(basename "$src")
+      dst="$HOME/.claude/commands/$cmd"
+      rm -f "$dst"
+      if ln -sfn "$src" "$dst" 2>/dev/null; then
+        ok "linked: /${cmd%.md}"
+      else
+        cp "$src" "$dst"
+        ok "copied: /${cmd%.md} (symlink unsupported)"
+      fi
+    done
+    echo ""
+  fi
+fi
 
 # ── Step 6: Configure global CLAUDE.md ───────────────────────────────────────
 info "Configuring ~/.claude/CLAUDE.md..."
