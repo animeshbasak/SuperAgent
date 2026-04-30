@@ -21,21 +21,7 @@ When a task matches these patterns, follow the corresponding skill chain:
 | Pattern Keywords | Skill Chain |
 |-----------------|-------------|
 | bug, fix, broken, error, crash, stack trace, traceback, debug | systematic-debugging → test-driven-development |
-| webgl, three, js, shader, awwwards, cinematic, premium | webgl-craft → writing-plans |
-| design, ui, ux, component, page, layout, dashboard, landing, redesign | brainstorming → ui-ux-pro-max |
-| add, build, create, implement, feature, page, component, module, endpoint, logging, monitoring, tracking, validation, handler | brainstorming → writing-plans → test-driven-development → executing-plans |
-| ship, release, tag, merge | review → ship |
-| review, this, my, the, look at my | review → simplify |
-| security, owasp, injection, secret, vuln, audit | cso → security-review |
-| how does, explain, understand, what is, walk me through | graphify-query → smart-explore |
-| why, did, does, is, are, what happened, root cause | investigate → mem-search |
-| canary, health., check, is ., healthy, status check, deploy healthy | verification-before-completion |
-| plan, design approach, strategy for, roadmap | brainstorming → writing-plans → plan-ceo-review → plan-eng-review |
-| did we, last, week, time, previously, remember when | mem-search |
-| office hours, narrowest wedge, product sense, yc, pmf | office-hours |
-| refactor, clean, up, simplify, dedupe, duplicated | simplify |
-| and also, as well as, at the same time, plus | dispatching-parallel-agents |
-| and also, as well as, at the same time, plus | dispatching-parallel-agents |
+| bug, fix, broken, error, crash, stack trace, traceback, debug | systematic-debugging → test-driven-development |
 
 ## Tools
 
@@ -53,6 +39,90 @@ SuperAgent includes these CLI tools. Run them when indicated by the routing tabl
 ---
 
 ## Skills Reference
+
+### auto-fallback
+> Cost-aware routing brain — switch from Anthropic API to a free local model when the user is approaching plan limits, hitting 429 bursts, or asks to "save anthropic" / "switch local" / "rate limit" / "approaching limit". Auto-fires on complexity=trivial when budget is tight. Picks the right Ollama / LM Studio / llama.cpp model for the task complexity, runs a 3-step canary first, and switches via `superagent-switch`. State lives in `~/.superagent/`.
+
+# auto-fallback
+
+The cost-aware routing brain. Decides when to flip Claude Code from Anthropic API to a local model running behind the free-claude-code proxy on `http://localhost:18082`.
+
+## Inputs
+
+1. **Latest classifier output** — `meta.complexity` ∈ {trivial, moderate, complex}
+   from `superagent-classify <task>`.
+2. **Budget signal** — `superagent-cost today --json`
+   - `pct_of_plan` — fraction of plan limit consumed (0..1)
+   - `time_to_5h_reset_minutes` — minutes until rolling 5h limit resets
+   - `recent_429_count_60s` — number of 429s in the last 60 seconds
+3. **Available local models** — `superagent-switch list` (auto-refreshes if stale)
+4. **Auto flag** — `~/.superagent/auto-fallback.flag` ("on" or "off")
+
+## Decision Tree
+
+```
+complexity == "trivial"
+  → suggest qwen2.5-coder:7b (Ollama)
+
+complexity == "moderate"
+  → suggest qwen3-coder:next
+
+complexity == "complex" AND pct_of_plan > 0.80
+  → KEEP Anthropic, warn user
+    "complexity=complex; local models will degrade quality. burning Anthropic budget instead."
+    Offer manual switch.
+
+time_to_5h_reset_minutes < 30  AND complexity != "complex"
+  → suggest local for moderate/trivial
+
+recent_429_count_60s >= 3
+  → switch immediately, prompt user to confirm
+    (NOT auto unless `auto on`)
+```
+
+## Procedure
+
+1. Read latest classifier output — pull `meta.complexity`.
+2. Run `superagent-cost today --json` — parse budget signals.
+3. Apply the decision tree above to pick a candidate model (or NONE).
+4. If a local model is suggested:
+   a. Show menu of available models from `superagent-switch list`.
+   b. User picks one (or accepts the suggested default).
+   c. Run `superagent-switch canary <model> --depth=3`.
+   d. **On canary pass** → `superagent-switch to <model>`; tell user to restart Claude Code.
+   e. **On canary fail** → freeze. Prompt:
+      - "try a different model"
+      - "wait — keep Anthropic, retry in N minutes"
+      - "accept Anthropic limits — proceed at reduced rate"
+      Do NOT auto-revert.
+5. If `auto-fallback.flag == on` AND no in-flight tool calls, the limit-watch hook
+   may invoke this skill non-interactively; in that mode it must still confirm
+   before flipping (pre-canary). Default behavior: require confirmation.
+
+## Costs locked in
+
+| complexity  | budget | action                                        |
+|-------------|--------|-----------------------------------------------|
+| trivial     | any    | local (`qwen2.5-coder:7b`)                    |
+| moderate    | <80%   | Anthropic (Sonnet/Haiku)                      |
+| moderate    | >80%   | local (`qwen3-coder:next`)                    |
+| complex     | <80%   | Anthropic (Opus/Sonnet)                       |
+| complex     | >80%   | KEEP Anthropic + warn — let user override     |
+| any         | 429×3  | switch immediately + confirm                  |
+
+## Recovery
+
+- If switching breaks Claude Code → `superagent-switch back` restores Anthropic.
+- Backed-up `ANTHROPIC_API_KEY` lives at `~/.superagent/anthropic-key.bak`.
+
+## Notes
+
+- All state under `~/.superagent/`, never `~/.claude/`.
+- Free-claude-code proxy port is **18082** (not 8082).
+- Auto-switch defaults OFF; opt-in for unattended use only.
+- Canary is mandatory before any switch — never skip.
+
+---
 
 ### autoplan
 > Auto-pipeline a plan through product, design, and eng review sequentially, then synthesize into a single plan artifact. Use when you want the full review stack without invoking skills manually one at a time.
@@ -385,6 +455,180 @@ Markdown report ranked by severity (Critical / High / Medium / Low):
 - Each invoked skill name appears as an H2 heading in the output.
 - Each section has non-empty body (agent actually returned something).
 - If any sub-agent failed: call out which one + the error, do not swallow.
+
+---
+
+### free-llm
+> Route Claude Code through free or local LLMs via the free-claude-code transparent proxy on :18082. Triggers on "switch to free", "use local model", "no Anthropic key", "ollama", "deepseek", "use local llm", "free LLM". Privacy default is local-only (Ollama / LM Studio / llama.cpp); cloud free-tier (NIM / OpenRouter / DeepSeek) is opt-in. Token-savings questions stay with token-stats.
+
+# free-llm
+
+Wire Claude Code's outbound API calls through the `free-claude-code` proxy so the session runs on local or free-tier models instead of paid Anthropic. Default is **local-only** for privacy; cloud free-tier is opt-in.
+
+## When to use
+
+- User says "switch to free", "use local model", "no Anthropic key", "use local llm", "free LLM", "use ollama", "use deepseek".
+- User has hit Anthropic rate limits or quota and wants to keep working.
+- User wants offline / air-gapped operation.
+- User explicitly opts into cloud free tier (NIM, OpenRouter, DeepSeek).
+
+**Do NOT use for:**
+- "How many tokens did I save?" → that is `token-stats`.
+- "Save tokens" / "compress context" → that is `token-stats` + caveman.
+- Choosing a *paid* Anthropic model — that is regular Claude Code.
+
+## Procedure
+
+### 0. Parse the argument
+
+- `setup` (default if no arg) → run full install + start flow.
+- `switch <model>` → re-route to a specific tier model, restart proxy.
+- `back` → unset `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`, restore prior `ANTHROPIC_API_KEY`.
+- `status` → curl `/health`, show current routing, exit.
+
+### 1. Check if proxy is already running
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:18082/health
+```
+
+- `200` → proxy live; skip start (step 7). Jump to canary if `setup`/`switch`.
+- non-200 / curl error → continue to install/start.
+
+### 2. Verify `superagent-switch` CLI is available
+
+```bash
+command -v superagent-switch
+```
+
+If missing, point user to `bundles/free-claude-code/install.sh` and stop. Do not attempt manual install — installation is delegated.
+
+### 3. Verify `free-claude-code` is installed
+
+Check `~/.superagent/free-claude-code/.venv/bin/free-cc` exists. If not:
+
+```
+SuperAgent has not installed free-claude-code yet.
+Run: bash bundles/free-claude-code/install.sh
+That will: git clone repo, uv venv --python 3.14, uv sync.
+```
+
+Stop and surface this to the user. Do not pipx — package is not on PyPI.
+
+### 4. Probe local providers (privacy default)
+
+```bash
+ollama list 2>/dev/null
+curl -sf http://localhost:1234/v1/models 2>/dev/null   # LM Studio
+curl -sf http://localhost:8080/v1/models 2>/dev/null   # llama.cpp server
+```
+
+Record which providers responded. If none are up, surface:
+
+```
+No local LLM provider detected. Start one of:
+  - ollama serve  (then: ollama pull qwen2.5-coder:7b)
+  - LM Studio (load a model, start server on :1234)
+  - llama.cpp server on :8080
+Or pass --cloud to opt into free cloud tier (NIM / OpenRouter / DeepSeek).
+```
+
+### 5. Show tier mapping recommendation
+
+Default (local-only):
+
+| Claude tier | Routed to | Provider |
+|---|---|---|
+| Opus | `lmstudio/unsloth/MiniMax-M2.5-GGUF` | LM Studio |
+| Sonnet | `ollama/qwen2.5-coder:7b` | Ollama |
+| Haiku | `ollama/qwen2.5-coder:7b` | Ollama |
+
+Cloud opt-in (only if user passes `--cloud` or local probe failed and user confirms):
+
+| Claude tier | Routed to | Provider |
+|---|---|---|
+| Opus | `nvidia_nim/qwen/qwen3.5-397b-a17b` | NVIDIA NIM |
+| Sonnet | `nvidia_nim/moonshotai/kimi-k2.5` | NVIDIA NIM |
+| Haiku | `open_router/stepfun/step-3.5-flash:free` | OpenRouter |
+
+See `references/routing.md` for the complete table and fallback chains.
+
+### 6. Write `~/.superagent/free-llm.env`
+
+If `~/.superagent/free-llm.env` exists, back it up to `free-llm.env.bak.<timestamp>` then overwrite. Always emit BOTH variables — `free-claude-code` rejects requests missing either:
+
+```
+ANTHROPIC_BASE_URL=http://localhost:18082
+ANTHROPIC_AUTH_TOKEN=freecc
+SUPERAGENT_FREE_LLM_TIER=local
+SUPERAGENT_FREE_LLM_OPUS=lmstudio/unsloth/MiniMax-M2.5-GGUF
+SUPERAGENT_FREE_LLM_SONNET=ollama/qwen2.5-coder:7b
+SUPERAGENT_FREE_LLM_HAIKU=ollama/qwen2.5-coder:7b
+```
+
+If user already has `ANTHROPIC_API_KEY` in env, write it to `~/.superagent/free-llm.env.prev` so `back` can restore it.
+
+### 7. Start the proxy in background
+
+```bash
+superagent-switch start --port 18082 --env ~/.superagent/free-llm.env
+```
+
+Wait up to 5s, then verify:
+
+```bash
+curl -s http://localhost:18082/health
+```
+
+If port 18082 is already bound by a non-superagent process, fall back to 18083 (rewrite the env file accordingly) and emit a warning. Never silently use a different port — the user's `ANTHROPIC_BASE_URL` must match.
+
+### 8. Run canary tool-call
+
+Delegate to `superagent-switch`:
+
+```bash
+superagent-switch canary <opus-model> --depth=3
+```
+
+A depth-3 canary exercises a real tool-calling loop — it is the only reliable check that an open-weights model can survive Claude Code's tool-call schema. If it fails, **do not switch**. Surface the error and tell the user to either pick a different model (`switch <model>`) or stay on Anthropic.
+
+### 9. Tell the user to restart Claude Code
+
+```
+free-llm proxy live on :18082, canary passed.
+Routing: Opus→<x>  Sonnet→<y>  Haiku→<z>
+RESTART your Claude Code session for ANTHROPIC_BASE_URL to take effect.
+Run `free-llm back` to revert.
+```
+
+## Verification
+
+Before declaring success, ALL of:
+
+1. `curl -s http://localhost:18082/health` returns 200.
+2. `superagent-switch canary` exited 0 with depth ≥ 3.
+3. Both `ANTHROPIC_BASE_URL=http://localhost:18082` and `ANTHROPIC_AUTH_TOKEN=freecc` are present in `~/.superagent/free-llm.env`.
+4. `~/.superagent/free-llm.env.prev` exists if the user previously had `ANTHROPIC_API_KEY` set.
+
+If any check fails, do not claim the switch worked.
+
+## Edge cases
+
+- **Proxy already running on :18082** — reuse existing process; do not double-start. Confirm it is the SuperAgent-namespaced instance (probe `/superagent` endpoint or check pidfile at `~/.superagent/free-claude-code.pid`); if a foreign process holds the port, fall back to 18083.
+- **Port collision (:18082 bound by foreign process)** — fall back to :18083, rewrite env file, log a warning. Never silently ignore.
+- **Stale `~/.superagent/free-llm.env` from a previous session** — back up to `free-llm.env.bak.<unix-ts>` then overwrite.
+- **Existing `ANTHROPIC_API_KEY` in user env** — back up to `~/.superagent/free-llm.env.prev` BEFORE writing the new env. `free-llm back` restores it.
+- **Canary fails** — abort. Do not write env. Surface the model-id and the failing tool-call. Suggest a smaller-tier fallback from `references/routing.md`.
+- **Context window truncation** — local models with smaller contexts (8k–32k) silently drop turns. Detect via canary depth-3; document in `references/troubleshooting.md`.
+- **Tool-call schema mismatch** — many open-weights models malform tool-call JSON. The canary catches this. See `references/troubleshooting.md`.
+- **429 from cloud free tier** — auto-fall to next provider in chain (`references/routing.md`); surface persistent 429s.
+- **`back` with no prior key** — just unset `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`. Note Claude Code will fail until user supplies a key.
+
+## References
+
+- `references/providers.md` — provider matrix (NIM, OpenRouter, Ollama, LM Studio, llama.cpp, DeepSeek): endpoints, auth, free-tier limits, install.
+- `references/routing.md` — tier → model mapping with real model IDs and fallback chains.
+- `references/troubleshooting.md` — 429s, tool-call failures, port conflicts, context truncation, canary diagnostics.
 
 ---
 
@@ -1282,6 +1526,218 @@ Last 5 sessions
 ──────────────────────────────────────────────
 Tip: re-run graphify update <dir> after large codebase changes.
 ```
+
+---
+
+### video-craft
+# Video Craft — HTML Compositions to MP4 via hyperframes
+
+This skill teaches the agent to author hyperframes compositions (HTML + GSAP +
+`data-*` timing attributes) and render them deterministically to MP4. The render
+pipeline is seek-driven and frame-accurate — preview ≠ render performance, but
+preview === render visual output. Treat the composition as the single source of
+truth; never try to play media or hide clips in scripts.
+
+---
+
+## When to use
+
+- User asks for a video, MP4, or rendered motion file (any aspect ratio).
+- User wants a product ad, explainer, lower-third overlay, animated chart, logo
+  sting, social cut, kinetic typography piece, or data-viz video.
+- User has assets (images, video, audio, copy, data) and the deliverable is
+  "ship me a video file".
+- User mentions hyperframes, GSAP timeline, deterministic render, frame
+  capture, or composition-to-MP4 pipeline.
+
+**Do NOT use for:** live web pages with scroll animation (use `webgl-craft`),
+realtime UI prototypes, or interactive motion. video-craft renders are
+non-interactive video files.
+
+---
+
+## Procedure
+
+### 1. Preflight (REQUIRED — never skip)
+
+Both checks must pass before any author/render step. If either fails, stop and
+direct the user to install before proceeding.
+
+```bash
+# Check hyperframes CLI
+hyperframes --version || npx hyperframes --version
+
+# Check FFmpeg (hard dependency — no MP4 without it)
+ffmpeg -version | head -1
+```
+
+If `hyperframes` is missing:
+```bash
+npm i -g hyperframes
+# or run the bundled installer:
+bash bundles/hyperframes/install.sh
+```
+
+If `ffmpeg` is missing:
+- macOS: `brew install ffmpeg`
+- Ubuntu/Debian: `sudo apt install -y ffmpeg`
+- Windows: `winget install ffmpeg`
+
+Then run the deeper diagnostic:
+```bash
+npx hyperframes doctor
+```
+Expected: green checks for Node 22+, FFmpeg, FFprobe, Chrome.
+
+### 2. Pick the entrypoint
+
+Two paths:
+
+**A. Recipe-first (recommended).** If the user's intent matches a recipe in
+`recipes/`, copy it as the starting composition and edit. Recipes:
+
+| Recipe                       | Use when                                                |
+| ---------------------------- | ------------------------------------------------------- |
+| `hello-world.html`           | Smallest possible composition; verifying the pipeline.  |
+| `product-ad-30s.html`        | 30s product video — hero shot, three feature beats, CTA.|
+| `data-driven-chart.html`     | Animated bar chart with staggered reveal + value labels.|
+| `lower-third-overlay.html`   | Title bar / name plate that slides in over footage.     |
+
+**B. From scratch.** Use `npx hyperframes init <name> --non-interactive --example blank`
+and edit `index.html`. Read `references/architecture.md` first to understand the
+composition / scene / block taxonomy.
+
+### 3. Author the composition
+
+Read these references before writing HTML:
+
+1. `references/architecture.md` — composition root, nested compositions, tracks,
+   z-ordering, `data-*` attributes.
+2. `references/animations.md` — GSAP timeline rules (`{ paused: true }`,
+   `window.__timelines`, position parameter, deterministic seeking).
+3. `references/catalog.md` — the 39 hyperframes block types you can install
+   with `npx hyperframes add <block>`.
+
+The three non-negotiable rules:
+
+- **Root** — every composition's outermost element has `data-composition-id`,
+  `data-width`, `data-height`.
+- **Clips** — every timed element has `class="clip"`, `data-start`,
+  `data-duration`, `data-track-index`. Clips on the same track cannot overlap.
+- **Timeline** — exactly one `gsap.timeline({ paused: true })` per composition,
+  registered as `window.__timelines[<composition-id>] = tl`. The framework
+  drives playback; never call `tl.play()`, `media.play()`, or seek manually.
+
+### 4. Lint
+
+```bash
+npx hyperframes lint ./index.html
+```
+
+Fix all errors. Warnings are usually safe to ship but worth reading.
+
+### 5. Preview before render (REQUIRED)
+
+```bash
+npx hyperframes preview
+# Opens http://localhost:3002
+```
+
+Scrub the timeline. Verify:
+- All clips appear at the right time.
+- GSAP animations look correct at every keyframe.
+- Audio is present where expected.
+- No clip is cut off because the timeline is shorter than the longest clip
+  (see `references/animations.md` § "Extending timeline duration").
+
+Only proceed to render after preview looks correct. Renders take 30s–10min;
+you do not want to discover a typo at frame 4500.
+
+### 6. Render
+
+For iteration:
+```bash
+npx hyperframes render --output out.mp4 --quality draft
+```
+
+For final delivery:
+```bash
+npx hyperframes render --output final.mp4 --quality high
+```
+
+For deterministic / CI / shareable output:
+```bash
+npx hyperframes render --docker --output final.mp4
+```
+
+See `references/pipeline.md` for the full flag matrix (CRF, bitrate, workers,
+GPU encoding, HDR, format selection).
+
+**Timeout policy.** Renders are bounded by composition duration × frame cost.
+Estimate before launching:
+- 5s composition, 30fps, standard quality: ~10–30s wall clock.
+- 30s composition, 30fps, high quality: 1–4 minutes.
+- 60s+ composition or 60fps or 4K: up to 10 minutes.
+
+When invoking via Bash, set `timeout: 600000` (10 min) for any non-trivial
+render. For quick iteration use `--quality draft` to keep wall clock under 60s.
+
+### 7. Verify output
+
+```bash
+ffprobe -v error -show_entries stream=width,height,r_frame_rate,duration \
+  -of default=nw=1 out.mp4
+```
+
+Confirm width/height match the composition root, fps matches `--fps`, and
+duration matches the GSAP timeline duration. If duration is short, the
+timeline did not extend to cover the longest clip — see
+`references/animations.md` § "Extending timeline duration".
+
+---
+
+## Verification
+
+Before claiming the task complete:
+
+- [ ] `hyperframes --version` and `ffmpeg -version` both succeeded in preflight.
+- [ ] `npx hyperframes lint` reported zero errors.
+- [ ] Preview was opened and visually confirmed at least once.
+- [ ] Render command exited 0; output file exists at the requested path.
+- [ ] `ffprobe` confirms width × height × fps × duration are as intended.
+- [ ] If the user requested a specific aspect ratio (9:16, 1:1, 16:9), the
+      composition root's `data-width` and `data-height` reflect it.
+- [ ] No script in the composition calls `.play()`, `.pause()`,
+      `currentTime =`, or animates `width`/`height`/`top`/`left` directly on
+      a `<video>` element. (These are the most common bugs — see
+      `references/animations.md` § "What NOT to do".)
+
+---
+
+## Edge cases
+
+- **Render hangs at 0%.** Almost always a missing asset or unresolved
+  `data-composition-src`. Check preview console for 404s.
+- **Final video is shorter than expected.** GSAP timeline ends before the
+  longest media clip. Add `tl.set({}, {}, <duration-in-seconds>)` to extend.
+- **Black frames at the end.** Last GSAP tween fades something to opacity 0
+  but the timeline keeps going — either trim the timeline or remove the fade.
+- **Audio out of sync.** You animated `currentTime` in a script. Remove it;
+  the framework owns media playback.
+- **Fonts look different in render vs. preview.** Use `--docker` for
+  reproducible font rendering across machines.
+- **Video element stops painting after animation.** You animated
+  `width`/`height` directly on a `<video>`. Wrap in a `<div>` and animate
+  the wrapper.
+- **`Math.random()` produces different output each render.** It does — that
+  breaks determinism. Use a seeded RNG or pre-compute random values.
+- **Render uses 100% CPU and laptop fans spin up.** Lower `--workers` to 1
+  or 2. Default is half your cores capped at 4; on a hot machine drop it.
+- **Need transparent background.** Use `--format mov` or `--format webm`;
+  MP4 does not support alpha.
+
+When in doubt, run `npx hyperframes doctor` and `npx hyperframes lint`
+before debugging anything else.
 
 ---
 

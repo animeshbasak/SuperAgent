@@ -1,5 +1,9 @@
 # Each rule: signal (regex, any-match) -> skill chain to append.
 # Evaluated in order; multiple rules can match. Brain dedupes and orders the resulting chain.
+#
+# complexity: trivial | moderate | complex
+#   - default when absent: moderate
+#   - compound matches use precedence: complex > moderate > trivial (worst-case wins)
 
 meta:
   always_first: [mempalace-wake]
@@ -11,67 +15,82 @@ rules:
     # Removed 'failing' (investigate territory). Added 'debug'. Removed 'investigate' from chain.
     signal: "\\b(bug|fix|broken|error|crash|stack trace|traceback|debug)\\b"
     chain: [systematic-debugging, test-driven-development]
+    complexity: moderate
 
   - name: webgl
     # Moved before 'ui' so webgl-craft appears first for 3D/cinematic prompts. Added writing-plans.
     signal: "\\b(3d|webgl|three\\.js|r3f|shader|awwwards|cinematic|premium)\\b"
     chain: [webgl-craft, writing-plans]
+    complexity: complex
 
   - name: ui
     # Removed plan-design-review (over-fires on non-design tasks). Added brainstorming + 'redesign'.
     signal: "\\b(design|ui|ux|component|page|layout|dashboard|landing|redesign)\\b"
     chain: [brainstorming, ui-ux-pro-max]
+    complexity: moderate
 
   - name: feature
     # Extended signal to cover small additions (logging, monitoring, tracking, validation, handler).
     signal: "\\b(add|build|create|implement) .*(feature|page|component|module|endpoint|logging|monitoring|tracking|validation|handler)\\b"
     chain: [brainstorming, writing-plans, test-driven-development, executing-plans]
+    complexity: complex
 
   - name: release
     # Removed 'pr|pull request' (PR review != ship) and 'deploy' (deploy-health != ship).
     signal: "\\b(ship|release|tag|merge)\\b"
     chain: [review, ship]
+    complexity: moderate
 
   - name: review
     signal: "\\b(review (this|my|the)|look at my)\\b"
     chain: [review, simplify]
+    complexity: trivial
 
   - name: security
     signal: "\\b(security|owasp|injection|secret|vuln|audit)\\b"
     chain: [cso, security-review]
+    complexity: complex
 
   - name: explore
     signal: "\\b(how does|explain|understand|what is|walk me through)\\b"
     chain: [graphify-query, smart-explore]
+    complexity: trivial
 
   - name: investigate
     # Added 'are' to why-clause to catch "why are builds failing".
     signal: "\\b(why (did|does|is|are)|what happened|root cause)\\b"
     chain: [investigate, mem-search]
+    complexity: moderate
 
   - name: canary
     # New rule: health/canary checks route to verification only, not ship.
     signal: "\\b(canary|health.?check|is .* healthy|status check|deploy healthy)\\b"
     chain: [verification-before-completion]
+    complexity: trivial
 
   - name: plan
     signal: "\\b(plan|design approach|strategy for|roadmap)\\b"
     chain: [brainstorming, writing-plans, plan-ceo-review, plan-eng-review]
+    complexity: complex
 
   - name: recall
     signal: "\\b(did we|last (week|time)|previously|remember when)\\b"
     chain: [mem-search]
+    complexity: trivial
 
   - name: product
     signal: "\\b(office hours|narrowest wedge|product sense|yc|pmf)\\b"
     chain: [office-hours]
+    complexity: moderate
 
   - name: refactor
     signal: "\\b(refactor|clean ?up|simplify|dedupe|duplicated)\\b"
     chain: [simplify]
+    complexity: moderate
 
   - name: parallel
     signal: "\\b(and also|as well as|at the same time|plus)\\b"
     chain: [dispatching-parallel-agents]
+    complexity: moderate
 
 build_archetypes: [bug, feature, ui, webgl, refactor]

@@ -1,18 +1,31 @@
 #!/usr/bin/env bash
-# Usage: superagent-cost [today|week|all]
+# Usage: superagent-cost [today|week|all] [--json]
 # Reads ~/.superagent/cost/calls.jsonl, groups by model, prints $ cost table + coach note.
+# --json emits machine-readable output (used by superagent-limit-watch.sh hook).
 set -euo pipefail
-RANGE="${1:-today}"
+RANGE="today"
+JSON_MODE=0
+for arg in "$@"; do
+  case "$arg" in
+    --json)            JSON_MODE=1 ;;
+    today|week|all)    RANGE="$arg" ;;
+    *)                 RANGE="$arg" ;;
+  esac
+done
 FILE="$HOME/.superagent/cost/calls.jsonl"
 
 if [[ ! -f "$FILE" ]]; then
-  echo "no cost data yet (file not found: $FILE)"
+  if [[ "$JSON_MODE" -eq 1 ]]; then
+    echo '{"range":"'"$RANGE"'","total_usd":0,"by_model":{},"pct_of_plan":0,"time_to_5h_reset_minutes":300,"recent_429_count_60s":0}'
+  else
+    echo "no cost data yet (file not found: $FILE)"
+  fi
   exit 0
 fi
 
-python3 - "$FILE" "$RANGE" <<'PY'
-import json, sys, datetime, collections
-path, rng = sys.argv[1], sys.argv[2]
+python3 - "$FILE" "$RANGE" "$JSON_MODE" <<'PY'
+import json, sys, datetime, collections, os
+path, rng, json_mode = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
 now = datetime.datetime.now(datetime.timezone.utc)
 cutoff = {
   'today': now.replace(hour=0, minute=0, second=0, microsecond=0),
@@ -23,9 +36,21 @@ if cutoff is None:
   print(f"unknown range: {rng}. use today|week|all", file=sys.stderr)
   sys.exit(2)
 
-PRICE = {'opus': 30, 'sonnet': 6, 'haiku': 1, 'unknown': 10}
+# $/1M tokens. local:* tier is $0 (Ollama / LM Studio / llama.cpp / qwen / deepseek / minimax).
+PRICE = {'opus': 30, 'sonnet': 6, 'haiku': 1, 'local': 0, 'unknown': 10}
+LOCAL_MARKERS = ('local', 'ollama', 'llamacpp', 'lmstudio', 'qwen', 'deepseek', 'minimax')
+
+def bucket(model_str: str) -> str:
+    m = (model_str or '').lower()
+    if any(marker in m for marker in LOCAL_MARKERS):
+        return 'local'
+    for k in ('opus', 'sonnet', 'haiku'):
+        if k in m:
+            return k
+    return 'unknown'
 
 agg = collections.Counter()
+recent_429_count = 0  # placeholder — computed below if the field exists
 for line in open(path):
     line = line.strip()
     if not line:
@@ -35,33 +60,79 @@ for line in open(path):
         t = datetime.datetime.fromisoformat(r['ts'])
         if t < cutoff:
             continue
-        m = next((k for k in ('opus','sonnet','haiku') if k in r.get('model','').lower()), 'unknown')
+        m = bucket(r.get('model', ''))
         agg[m] += int(r.get('tokens', 0))
+        if r.get('http_status') == 429 and (now - t).total_seconds() <= 60:
+            recent_429_count += 1
     except Exception:
         continue
+
+# Compute total $
+total = 0.0
+by_model = {}
+for m, tok in agg.items():
+    cost = tok * PRICE.get(m, PRICE['unknown']) / 1_000_000
+    total += cost
+    by_model[m] = {"tokens": tok, "usd": round(cost, 4)}
+
+# Plan limit signal (env-driven; default to $20/day pro tier as a sane floor)
+plan_limit = float(os.environ.get('SUPERAGENT_PLAN_LIMIT_USD', '20'))
+pct_of_plan = (total / plan_limit) if plan_limit > 0 else 0
+
+# 5h-reset estimate: assume 5h rolling window, return minutes until oldest sample exits
+# (best-effort — real value comes from Anthropic API headers when available)
+time_to_5h_reset = 300  # default 5h floor
+try:
+    five_h_ago = now - datetime.timedelta(hours=5)
+    oldest_in_window = None
+    for line in open(path):
+        try:
+            r = json.loads(line)
+            t = datetime.datetime.fromisoformat(r['ts'])
+            if t >= five_h_ago and (oldest_in_window is None or t < oldest_in_window):
+                oldest_in_window = t
+        except Exception:
+            continue
+    if oldest_in_window is not None:
+        delta = (oldest_in_window + datetime.timedelta(hours=5) - now).total_seconds() / 60
+        time_to_5h_reset = max(0, int(delta))
+except Exception:
+    pass
+
+if json_mode:
+    out = {
+        "range": rng,
+        "total_usd": round(total, 4),
+        "by_model": by_model,
+        "pct_of_plan": round(pct_of_plan, 4),
+        "time_to_5h_reset_minutes": time_to_5h_reset,
+        "recent_429_count_60s": recent_429_count,
+        "plan_limit_usd": plan_limit,
+    }
+    print(json.dumps(out))
+    sys.exit(0)
 
 if sum(agg.values()) == 0:
     print(f"no records in range: {rng}")
     sys.exit(0)
 
-total = 0.0
 print(f"{'model':8} {'tokens':>12}  {'$':>8}")
 print('-' * 32)
-for m in ('opus', 'sonnet', 'haiku', 'unknown'):
+for m in ('opus', 'sonnet', 'haiku', 'local', 'unknown'):
     tok = agg.get(m, 0)
     if tok == 0:
         continue
     cost = tok * PRICE[m] / 1_000_000
-    total += cost
     print(f"{m:8} {tok:>12,}  ${cost:>7.2f}")
 print('-' * 32)
 print(f"{'TOTAL':8} {sum(agg.values()):>12,}  ${total:>7.2f}")
 
 opus = agg.get('opus', 0)
 haiku = agg.get('haiku', 0)
-if opus > 500_000 and haiku < 100_000:
+local = agg.get('local', 0)
+if opus > 500_000 and haiku < 100_000 and local < 100_000:
     print()
-    print("Coach: heavy Opus use — try /effort low or Haiku for simple tasks.")
+    print("Coach: heavy Opus use — try /effort low, Haiku, or local model for simple tasks.")
 elif opus == 0 and haiku > 1_000_000:
     print()
     print("Coach: all-Haiku — try Sonnet for non-trivial reasoning.")

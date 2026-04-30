@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# superagent-classify — reads a task string, emits JSON {chain, hint}
+# superagent-classify — reads a task string, emits JSON {chain, hint, meta:{complexity}}
 # Usage: superagent-classify "task description"
 # Requires: yq (https://github.com/mikefarah/yq) and jq
 
@@ -90,12 +90,22 @@ build_archetypes = set(data.get("build_archetypes", []))
 # ── classifier algorithm ─────────────────────────────────────────────────────
 chain = list(always_first)
 matched_archetypes = []
+matched_complexities = []
+
+# precedence: complex > moderate > trivial (worst-case wins)
+COMPLEXITY_RANK = {"trivial": 0, "moderate": 1, "complex": 2}
+COMPLEXITY_NAME = {0: "trivial", 1: "moderate", 2: "complex"}
 
 for rule in rules:
     signal = rule.get("signal", "")
     if re.search(signal, task, re.IGNORECASE):
         chain.extend(rule.get("chain", []))
         matched_archetypes.append(rule["name"])
+        # default to moderate when absent
+        c = rule.get("complexity", "moderate")
+        if c not in COMPLEXITY_RANK:
+            c = "moderate"
+        matched_complexities.append(c)
 
 # stable dedup — preserve first-occurrence order
 seen = set()
@@ -112,12 +122,19 @@ if any(a in build_archetypes for a in matched_archetypes):
         if item not in chain:
             chain.append(item)
 
+# resolve complexity: max-rank wins; default moderate when nothing matched
+if matched_complexities:
+    rank = max(COMPLEXITY_RANK[c] for c in matched_complexities)
+    final_complexity = COMPLEXITY_NAME[rank]
+else:
+    final_complexity = "moderate"
+
 # ── parse history hint ───────────────────────────────────────────────────────
 try:
     hint = json.loads(history_hint_raw)
 except (json.JSONDecodeError, ValueError):
     hint = None
 
-result = {"chain": chain, "hint": hint}
+result = {"chain": chain, "hint": hint, "meta": {"complexity": final_complexity}}
 print(json.dumps(result))
 PYEOF

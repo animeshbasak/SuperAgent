@@ -9,23 +9,27 @@ When a task matches these patterns, follow the corresponding skill chain:
 | Pattern Keywords | Skill Chain |
 |-----------------|-------------|
 | bug, fix, broken, error, crash, stack trace, traceback, debug | systematic-debugging → test-driven-development |
-| webgl, three, js, shader, awwwards, cinematic, premium | webgl-craft → writing-plans |
-| design, ui, ux, component, page, layout, dashboard, landing, redesign | brainstorming → ui-ux-pro-max |
-| add, build, create, implement, feature, page, component, module, endpoint, logging, monitoring, tracking, validation, handler | brainstorming → writing-plans → test-driven-development → executing-plans |
-| ship, release, tag, merge | review → ship |
-| review, this, my, the, look at my | review → simplify |
-| security, owasp, injection, secret, vuln, audit | cso → security-review |
-| how does, explain, understand, what is, walk me through | graphify-query → smart-explore |
-| why, did, does, is, are, what happened, root cause | investigate → mem-search |
-| canary, health., check, is ., healthy, status check, deploy healthy | verification-before-completion |
-| plan, design approach, strategy for, roadmap | brainstorming → writing-plans → plan-ceo-review → plan-eng-review |
-| did we, last, week, time, previously, remember when | mem-search |
-| office hours, narrowest wedge, product sense, yc, pmf | office-hours |
-| refactor, clean, up, simplify, dedupe, duplicated | simplify |
-| and also, as well as, at the same time, plus | dispatching-parallel-agents |
-| and also, as well as, at the same time, plus | dispatching-parallel-agents |
+| bug, fix, broken, error, crash, stack trace, traceback, debug | systematic-debugging → test-driven-development |
 
 ## Skills Summary
+
+### auto-fallback
+> Cost-aware routing brain — switch from Anthropic API to a free local model when the user is approaching plan limits, hitting 429 bursts, or asks to "save anthropic" / "switch local" / "rate limit" / "approaching limit". Auto-fires on complexity=trivial when budget is tight. Picks the right Ollama / LM Studio / llama.cpp model for the task complexity, runs a 3-step canary first, and switches via `superagent-switch`. State lives in `~/.superagent/`.
+
+# auto-fallback
+
+The cost-aware routing brain. Decides when to flip Claude Code from Anthropic API to a local model running behind the free-claude-code proxy on `http://localhost:18082`.
+
+## Inputs
+
+1. **Latest classifier output** — `meta.complexity` ∈ {trivial, moderate, complex}
+   from `superagent-classify <task>`.
+2. **Budget signal** — `superagent-cost today --json`
+   - `pct_of_plan` — fraction of plan limit consumed (0..1)
+   - `time_to_5h_reset_minutes` — minutes until rolling 5h limit r
+
+*(Full instructions available in SuperAgent skills directory)*
+
 
 ### autoplan
 > Auto-pipeline a plan through product, design, and eng review sequentially, then synthesize into a single plan artifact. Use when you want the full review stack without invoking skills manually one at a time.
@@ -80,6 +84,23 @@ For each of: Broken Access Control, Cryptographic Failures, Injection, Insecure 
 1. Parse `$ARGUMENTS` into a skill list. Reject if fewer than 2 entries.
 2. Invoke `superpowers:dispatching-parallel-agents` — one agent per skill in the list.
 3. Each sub-agent runs its
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### free-llm
+> Route Claude Code through free or local LLMs via the free-claude-code transparent proxy on :18082. Triggers on "switch to free", "use local model", "no Anthropic key", "ollama", "deepseek", "use local llm", "free LLM". Privacy default is local-only (Ollama / LM Studio / llama.cpp); cloud free-tier (NIM / OpenRouter / DeepSeek) is opt-in. Token-savings questions stay with token-stats.
+
+# free-llm
+
+Wire Claude Code's outbound API calls through the `free-claude-code` proxy so the session runs on local or free-tier models instead of paid Anthropic. Default is **local-only** for privacy; cloud free-tier is opt-in.
+
+## When to use
+
+- User says "switch to free", "use local model", "no Anthropic key", "use local llm", "free LLM", "use ollama", "use deepseek".
+- User has hit Anthropic rate limits or quota and wants to keep working.
+- User wants offline / air-gapped operation.
+- User e
 
 *(Full instructions available in SuperAgent skills directory)*
 
@@ -234,6 +255,24 @@ For each bullet, produce explicit findings with file:line references.
 ## The 20 Steps
 
 ### 1. Detect platf
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### video-craft
+# Video Craft — HTML Compositions to MP4 via hyperframes
+
+This skill teaches the agent to author hyperframes compositions (HTML + GSAP +
+`data-*` timing attributes) and render them deterministically to MP4. The render
+pipeline is seek-driven and frame-accurate — preview ≠ render performance, but
+preview === render visual output. Treat the composition as the single source of
+truth; never try to play media or hide clips in scripts.
+
+---
+
+## When to use
+
+- User asks for a video, MP4, or rendered mo
 
 *(Full instructions available in SuperAgent skills directory)*
 

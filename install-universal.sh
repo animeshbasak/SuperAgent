@@ -5,9 +5,17 @@
 # Does NOT touch the existing Claude Code install.sh — that remains separate.
 #
 # Usage:
-#   bash install-universal.sh              # auto-detect and install all
-#   bash install-universal.sh --platform codex   # install for specific platform
-#   bash install-universal.sh --list             # list detected platforms
+#   bash install-universal.sh                       # auto-detect and install all
+#   bash install-universal.sh --platform codex      # install for specific platform
+#   bash install-universal.sh --list                # list detected platforms
+#
+#   Optional bundles (Phase B — opt-in, all idempotent):
+#     --with-video       hyperframes + Node 22+ + FFmpeg          (~120 MB)
+#     --with-free-llm    free-claude-code + Ollama qwen2.5-coder  (~5 GB)   [Claude Code only]
+#     --with-near-opus   llama.cpp + Qwen3.6-27B Q4_K_M GGUF       (~17 GB) [Claude Code only]
+#     --full             all of the above                          (~21 GB total)
+#
+#   Privacy default: bundles install LOCAL-only LLMs. Cloud free-tier is opt-in.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -74,11 +82,20 @@ detect_platforms() {
 # ── Parse Arguments ───────────────────────────────────────────────────────────
 SPECIFIC_PLATFORM=""
 LIST_ONLY=0
+WITH_VIDEO=0
+WITH_FREE_LLM=0
+WITH_NEAR_OPUS=0
 
 for arg in "$@"; do
   case "$arg" in
-    --list) LIST_ONLY=1 ;;
-    --platform) :;; # next arg is the platform name
+    --list)           LIST_ONLY=1 ;;
+    --platform)       :;; # next arg is the platform name
+    --with-video)     WITH_VIDEO=1 ;;
+    --with-free-llm)  WITH_FREE_LLM=1 ;;
+    --with-near-opus) WITH_NEAR_OPUS=1 ;;
+    --full)           WITH_VIDEO=1; WITH_FREE_LLM=1; WITH_NEAR_OPUS=1 ;;
+    -h|--help)
+      sed -n '2,18p' "$0"; exit 0 ;;
     claude|codex|gemini|cursor|windsurf|copilot|continue|aider)
       SPECIFIC_PLATFORM="$arg" ;;
   esac
@@ -186,6 +203,48 @@ done
 
 if ! echo "$PATH" | tr ':' '\n' | grep -Fxq "$HOME/.local/bin"; then
   warn "~/.local/bin is not on PATH — add: export PATH=\"\$HOME/.local/bin:\$PATH\""
+fi
+
+# ── Optional Bundles (Phase B) ────────────────────────────────────────────────
+# `--with-free-llm` and `--with-near-opus` are scoped to Claude Code only,
+# because the proxy + GGUF integration paths target the Claude Code CLI.
+# On Cursor/Copilot/etc. we warn and skip rather than silently install.
+have_claude=0
+if printf '%s\n' "${DETECTED[@]}" | grep -qx "claude"; then
+  have_claude=1
+fi
+
+run_bundle() {
+  local label="$1"; shift
+  local script="$1"; shift
+  echo ""
+  echo -e "${BOLD}── Bundle: ${label} ──${NC}"
+  if [[ ! -f "$script" ]]; then
+    warn "Bundle script not found: $script — skipping"
+    return
+  fi
+  bash "$script" "$@" || warn "Bundle '${label}' returned non-zero — continuing"
+}
+
+if [[ "$WITH_VIDEO" == "1" ]]; then
+  run_bundle "hyperframes (~120 MB)" "$SCRIPT_DIR/bundles/hyperframes/install.sh"
+fi
+
+if [[ "$WITH_FREE_LLM" == "1" ]]; then
+  if [[ "$have_claude" == "1" ]]; then
+    run_bundle "free-claude-code (~400 MB)"   "$SCRIPT_DIR/bundles/free-claude-code/install.sh"
+    run_bundle "Ollama + qwen2.5-coder:7b (~4.5 GB)" "$SCRIPT_DIR/bundles/local-llms/install-ollama.sh"
+  else
+    warn "--with-free-llm is Claude Code only; not detected → skipping"
+  fi
+fi
+
+if [[ "$WITH_NEAR_OPUS" == "1" ]]; then
+  if [[ "$have_claude" == "1" ]]; then
+    run_bundle "llama.cpp + Qwen3.6-27B Q4_K_M (~17 GB)" "$SCRIPT_DIR/bundles/local-llms/install-llamacpp.sh"
+  else
+    warn "--with-near-opus is Claude Code only; not detected → skipping"
+  fi
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────

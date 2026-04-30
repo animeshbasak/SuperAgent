@@ -71,16 +71,42 @@ fi
 PAYLOAD=$(cat)
 TOOL_NAME=$(echo "$PAYLOAD" | jq -r '.tool_name // ""' 2>/dev/null)
 
-# Only care about Bash tool calls
-[[ "$TOOL_NAME" != "Bash" ]] && exit 0
+# Care about Bash + Read/Edit/Write/Grep/Glob (cost-meter widening, Phase C v2.2)
+case "$TOOL_NAME" in
+  Bash|Read|Edit|Write|Grep|Glob) ;;
+  *) exit 0 ;;
+esac
 
 COMMAND=$(echo "$PAYLOAD"  | jq -r '.tool_input.command // ""'    2>/dev/null)
 RESPONSE=$(echo "$PAYLOAD" | jq -r '.tool_response.output // ""'  2>/dev/null)
 
-# Detect which superagent tool was used
+# Detect which superagent tool was used (Bash branch only — preserves existing logic)
 TOOL_TYPE=""
-echo "$COMMAND" | grep -q "graphify"   && TOOL_TYPE="graphify"
-echo "$COMMAND" | grep -q "mempalace"  && TOOL_TYPE="mempalace"
+if [[ "$TOOL_NAME" == "Bash" ]]; then
+  echo "$COMMAND" | grep -q "graphify"   && TOOL_TYPE="graphify"
+  echo "$COMMAND" | grep -q "mempalace"  && TOOL_TYPE="mempalace"
+fi
+
+# Non-Bash tools: estimate tokens from response size, log to cost ledger,
+# then exit before the graphify/mempalace stats accounting (which is Bash-only).
+if [[ "$TOOL_NAME" != "Bash" ]]; then
+  RESP_BYTES=$(echo "$PAYLOAD" | jq -r '(.tool_response | tostring) | length' 2>/dev/null || echo 0)
+  # ~4 chars per token rough estimate
+  SYN_TOKENS=$(( ${RESP_BYTES:-0} / 4 ))
+  COST_FILE="$HOME/.superagent/cost/calls.jsonl"
+  mkdir -p "$(dirname "$COST_FILE")" 2>/dev/null || true
+  {
+    printf '%s' "{"
+    printf '"ts":"%s",' "$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
+    printf '"project":"%s",' "${PWD:-unknown}"
+    printf '"tool":"%s",' "$TOOL_NAME"
+    printf '"tokens":%s,' "${SYN_TOKENS:-0}"
+    printf '"model":"%s"' "${CLAUDE_MODEL:-unknown}"
+    printf '}\n'
+  } >> "$COST_FILE" 2>/dev/null || true
+  exit 0
+fi
+
 [[ -z "$TOOL_TYPE" ]] && exit 0
 
 init_stats

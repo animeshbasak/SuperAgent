@@ -1,0 +1,12 @@
+{
+  "step": 3,
+  "tool": "Bash",
+  "input": {
+    "command": "echo canary-ok"
+  },
+  "expected_response_shape": {
+    "tool": "Bash",
+    "ok": true,
+    "stdout": "canary-ok\n"
+  }
+}

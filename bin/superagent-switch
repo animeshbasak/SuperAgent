@@ -1,0 +1,412 @@
+#!/usr/bin/env bash
+# superagent-switch — cost-aware proxy/model switcher
+#
+# Subcommands:
+#   list                       Show available local models (Ollama, LM Studio, llama.cpp)
+#   to <model>                 Switch Claude Code to free-claude-code proxy + chosen model
+#   back                       Restore Anthropic API mode
+#   auto on|off                Toggle auto-fallback flag
+#   status                     Show current proxy/model/auto state + last canary
+#   canary <model> --depth=N   Run N-step tool-call sanity test against proxy
+#   help                       Show this help text
+#
+# State files (all under ~/.superagent/, never ~/.claude/):
+#   local-models.json     — cached list of detectable local models
+#   free-llm.env          — env vars sourced by Claude Code wrapper to flip into proxy mode
+#   switch.lock           — flock for mutual-exclusion on writes
+#   switch.log            — append-only log of switch events
+#   auto-fallback.flag    — contents "on" or "off"
+#   canary-last.json      — most recent canary result
+#   anthropic-key.bak     — back-up of ANTHROPIC_API_KEY when switching to local
+#
+# All file writes use flock + atomic temp-rename (pattern from hooks/superagent-tracker.sh).
+
+set -euo pipefail
+
+# ── paths ────────────────────────────────────────────────────────────────────
+STATE_DIR="$HOME/.superagent"
+MODELS_FILE="$STATE_DIR/local-models.json"
+ENV_FILE="$STATE_DIR/free-llm.env"
+LOCK_FILE="$STATE_DIR/switch.lock"
+LOG_FILE="$STATE_DIR/switch.log"
+AUTO_FLAG="$STATE_DIR/auto-fallback.flag"
+CANARY_FILE="$STATE_DIR/canary-last.json"
+KEY_BACKUP="$STATE_DIR/anthropic-key.bak"
+
+PROXY_URL="http://localhost:18082"
+PROXY_TOKEN="freecc"
+MODELS_TTL_SECONDS=3600  # refresh local-models.json if older than 1 hour
+
+mkdir -p "$STATE_DIR"
+touch "$LOCK_FILE"
+
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE" 2>/dev/null || true
+}
+
+# ── locked atomic write helper (flock + temp + rename) ───────────────────────
+# Usage: atomic_write <target> <<<"contents"
+# Uses flock when available (Linux), falls back to python fcntl on Darwin.
+atomic_write() {
+  local target="$1"
+  local tmp
+  tmp=$(mktemp "${target}.XXXXXX")
+  cat > "$tmp"
+  if command -v flock >/dev/null 2>&1; then
+    (
+      flock -x 9
+      mv "$tmp" "$target"
+    ) 9>"$LOCK_FILE"
+  else
+    python3 - "$LOCK_FILE" "$tmp" "$target" <<'PY'
+import fcntl, os, sys
+lock, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]
+fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o644)
+try:
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    os.replace(src, dst)
+finally:
+    fcntl.flock(fd, fcntl.LOCK_UN)
+    os.close(fd)
+PY
+  fi
+}
+
+# ── help ─────────────────────────────────────────────────────────────────────
+print_help() {
+  cat <<'EOF'
+superagent-switch — cost-aware proxy/model switcher
+
+USAGE
+  superagent-switch <command> [args]
+
+COMMANDS
+  list                          List detected local models (ollama / lmstudio / llama.cpp)
+  to <model>                    Switch to free-claude-code proxy with given local model
+  back                          Restore Anthropic API mode
+  auto on|off                   Toggle auto-fallback (~/.superagent/auto-fallback.flag)
+  status                        Show current proxy / model / auto / last canary
+  canary <model> --depth=N      Run N-step (Read->Edit->Bash) sanity test
+  help                          Show this help
+
+NOTES
+  * Free-claude-code proxy port: 18082 (NOT 8082).
+  * After switch, restart Claude Code to pick up new env.
+  * State lives in ~/.superagent/, NEVER ~/.claude/.
+EOF
+}
+
+# ── refresh local-models.json ────────────────────────────────────────────────
+refresh_models() {
+  python3 - <<PY
+import json, os, subprocess, glob, re, sys, time
+
+models = []
+
+# Ollama
+try:
+    out = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=5)
+    if out.returncode == 0:
+        for line in out.stdout.splitlines()[1:]:  # skip header
+            parts = line.split()
+            if parts:
+                models.append({
+                    "name": parts[0],
+                    "provider": "ollama",
+                    "size": parts[1] if len(parts) > 1 else "",
+                })
+except (FileNotFoundError, subprocess.TimeoutExpired):
+    pass
+
+# LM Studio probe (default port 1234)
+try:
+    import urllib.request
+    req = urllib.request.Request("http://localhost:1234/v1/models")
+    with urllib.request.urlopen(req, timeout=2) as r:
+        data = json.load(r)
+        for m in data.get("data", []):
+            models.append({
+                "name": m.get("id", "unknown"),
+                "provider": "lmstudio",
+                "size": "",
+            })
+except Exception:
+    pass
+
+# llama.cpp local cache
+gguf_dir = os.path.expanduser("~/.cache/llama.cpp/models")
+for path in glob.glob(os.path.join(gguf_dir, "*.gguf")):
+    name = os.path.basename(path)[:-5]  # strip .gguf
+    models.append({
+        "name": name,
+        "provider": "llamacpp",
+        "size": "",
+        "path": path,
+    })
+
+result = {
+    "refreshed_at": int(time.time()),
+    "models": models,
+}
+print(json.dumps(result, indent=2))
+PY
+}
+
+ensure_models_fresh() {
+  local need_refresh=0
+  if [[ ! -f "$MODELS_FILE" ]]; then
+    need_refresh=1
+  else
+    local now refreshed_at
+    now=$(date +%s)
+    refreshed_at=$(jq -r '.refreshed_at // 0' "$MODELS_FILE" 2>/dev/null || echo 0)
+    local age=$(( now - refreshed_at ))
+    if (( age > MODELS_TTL_SECONDS )); then
+      need_refresh=1
+    fi
+  fi
+
+  if (( need_refresh == 1 )); then
+    local content
+    content=$(refresh_models)
+    atomic_write "$MODELS_FILE" <<<"$content"
+    log "models refreshed"
+  fi
+}
+
+# ── subcommand: list ─────────────────────────────────────────────────────────
+cmd_list() {
+  ensure_models_fresh
+  if [[ ! -s "$MODELS_FILE" ]]; then
+    echo "no local models detected"
+    return 0
+  fi
+  local count
+  count=$(jq '.models | length' "$MODELS_FILE")
+  if [[ "$count" == "0" ]]; then
+    echo "no local models detected"
+    return 0
+  fi
+  printf "%-40s %-10s %-8s\n" "MODEL" "PROVIDER" "SIZE"
+  printf "%-40s %-10s %-8s\n" "$(printf '%.0s-' {1..40})" "$(printf '%.0s-' {1..10})" "--------"
+  jq -r '.models[] | "\(.name)\t\(.provider)\t\(.size // "")"' "$MODELS_FILE" | \
+    while IFS=$'\t' read -r name provider size; do
+      printf "%-40s %-10s %-8s\n" "$name" "$provider" "$size"
+    done
+}
+
+# ── subcommand: to <model> ───────────────────────────────────────────────────
+cmd_to() {
+  local model="${1:-}"
+  if [[ -z "$model" ]]; then
+    echo "Usage: superagent-switch to <model>" >&2
+    exit 1
+  fi
+
+  # back up ANTHROPIC_API_KEY if set & not already backed up
+  if [[ -n "${ANTHROPIC_API_KEY:-}" && ! -f "$KEY_BACKUP" ]]; then
+    atomic_write "$KEY_BACKUP" <<<"ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
+  fi
+
+  local content
+  content="# generated by superagent-switch on $(date -Iseconds)
+ANTHROPIC_BASE_URL=${PROXY_URL}
+ANTHROPIC_AUTH_TOKEN=${PROXY_TOKEN}
+SUPERAGENT_LOCAL_MODEL=${model}
+"
+  atomic_write "$ENV_FILE" <<<"$content"
+  log "switched to model=$model proxy=$PROXY_URL"
+
+  echo "switched to local model: $model"
+  echo "wrote: $ENV_FILE"
+  echo "Restart Claude Code to pick up new env."
+}
+
+# ── subcommand: back ─────────────────────────────────────────────────────────
+cmd_back() {
+  if [[ -f "$ENV_FILE" ]]; then
+    rm -f "$ENV_FILE"
+    log "removed $ENV_FILE — restored Anthropic mode"
+    echo "restored Anthropic API mode (removed $ENV_FILE)"
+  else
+    echo "already in Anthropic mode (no $ENV_FILE)"
+  fi
+  if [[ -f "$KEY_BACKUP" ]]; then
+    echo "Note: backed-up ANTHROPIC_API_KEY at $KEY_BACKUP — re-export manually if needed."
+  fi
+}
+
+# ── subcommand: auto on|off ──────────────────────────────────────────────────
+cmd_auto() {
+  local val="${1:-}"
+  case "$val" in
+    on|off)
+      atomic_write "$AUTO_FLAG" <<<"$val"
+      log "auto-fallback set to $val"
+      echo "auto-fallback: $val"
+      ;;
+    "")
+      if [[ -f "$AUTO_FLAG" ]]; then
+        echo "auto-fallback: $(cat "$AUTO_FLAG")"
+      else
+        echo "auto-fallback: off (default)"
+      fi
+      ;;
+    *)
+      echo "Usage: superagent-switch auto on|off" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# ── subcommand: status ───────────────────────────────────────────────────────
+cmd_status() {
+  if [[ -f "$ENV_FILE" ]]; then
+    local model
+    model=$(grep -E '^SUPERAGENT_LOCAL_MODEL=' "$ENV_FILE" | cut -d= -f2- || echo "?")
+    echo "proxy: $PROXY_URL"
+    echo "model: $model"
+    echo "mode:  local"
+  else
+    echo "proxy: (none)"
+    echo "model: (anthropic)"
+    echo "mode:  anthropic"
+  fi
+  if [[ -f "$AUTO_FLAG" ]]; then
+    echo "auto:  $(cat "$AUTO_FLAG")"
+  else
+    echo "auto:  off"
+  fi
+  if [[ -f "$CANARY_FILE" ]]; then
+    echo "canary:"
+    jq . "$CANARY_FILE" 2>/dev/null || cat "$CANARY_FILE"
+  else
+    echo "canary: (none run yet)"
+  fi
+}
+
+# ── subcommand: canary ───────────────────────────────────────────────────────
+cmd_canary() {
+  local model="${1:-}"
+  shift || true
+  local depth=3
+  for arg in "$@"; do
+    case "$arg" in
+      --depth=*) depth="${arg#--depth=}" ;;
+    esac
+  done
+
+  if [[ -z "$model" ]]; then
+    echo "Usage: superagent-switch canary <model> --depth=N" >&2
+    exit 1
+  fi
+
+  # locate fixtures (script-relative, then $PWD)
+  local SCRIPT_DIR
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local FIXTURE_DIR=""
+  for c in \
+    "${SUPERAGENT_CANARY_FIXTURES:-}" \
+    "$SCRIPT_DIR/../test/canary-fixtures" \
+    "$PWD/test/canary-fixtures"; do
+    if [[ -n "$c" && -d "$c" ]]; then
+      FIXTURE_DIR="$c"
+      break
+    fi
+  done
+  if [[ -z "$FIXTURE_DIR" ]]; then
+    echo "canary fixtures not found" >&2
+    exit 2
+  fi
+
+  local proxy_url="${SUPERAGENT_PROXY_URL:-$PROXY_URL}"
+
+  echo "canary: model=$model depth=$depth proxy=$proxy_url"
+
+  local steps=( "step1-read.json" "step2-edit.json" "step3-bash.json" )
+  local pass=0
+  local fail_step=""
+  local i
+
+  for (( i=0; i<depth && i<${#steps[@]}; i++ )); do
+    local fixture="$FIXTURE_DIR/${steps[$i]}"
+    if [[ ! -f "$fixture" ]]; then
+      fail_step="${steps[$i]}-missing"
+      break
+    fi
+    local expected_tool
+    expected_tool=$(jq -r '.tool' "$fixture")
+
+    # POST a tool-call request to mock proxy. The mock returns a tool-call shape.
+    local resp http_code
+    resp=$(curl -fsS --max-time 5 \
+      -H "Authorization: Bearer ${PROXY_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -X POST "$proxy_url/v1/messages" \
+      -d "$(jq -c --arg step "$((i+1))" --arg model "$model" \
+            '{step: ($step|tonumber), model: $model, expected: .tool}' "$fixture")" \
+      2>/dev/null) || {
+        fail_step="${steps[$i]}-noresponse"
+        break
+      }
+
+    # parse and check tool name matches
+    local got_tool
+    got_tool=$(echo "$resp" | jq -r '.tool // empty' 2>/dev/null || echo "")
+    if [[ -z "$got_tool" ]]; then
+      fail_step="${steps[$i]}-malformed"
+      break
+    fi
+    if [[ "$got_tool" != "$expected_tool" ]]; then
+      fail_step="${steps[$i]}-mismatch:got=$got_tool"
+      break
+    fi
+    pass=$((pass + 1))
+    echo "  step $((i+1)) ($expected_tool): OK"
+  done
+
+  local result_json
+  if [[ -z "$fail_step" ]]; then
+    result_json=$(jq -n \
+      --arg model "$model" \
+      --argjson depth "$depth" \
+      --argjson pass "$pass" \
+      --arg ts "$(date -Iseconds)" \
+      '{model:$model, depth:$depth, pass:$pass, ok:true, ts:$ts}')
+    atomic_write "$CANARY_FILE" <<<"$result_json"
+    log "canary OK model=$model pass=$pass/$depth"
+    echo "canary: OK ($pass/$depth steps passed)"
+    return 0
+  else
+    result_json=$(jq -n \
+      --arg model "$model" \
+      --argjson depth "$depth" \
+      --argjson pass "$pass" \
+      --arg fail "$fail_step" \
+      --arg ts "$(date -Iseconds)" \
+      '{model:$model, depth:$depth, pass:$pass, ok:false, fail_step:$fail, ts:$ts}')
+    atomic_write "$CANARY_FILE" <<<"$result_json"
+    log "canary FAIL model=$model fail=$fail_step"
+    echo "canary: FAIL at $fail_step ($pass/$depth steps passed before failure)"
+    return 1
+  fi
+}
+
+# ── dispatch ─────────────────────────────────────────────────────────────────
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  list)    cmd_list "$@" ;;
+  to)      cmd_to "$@" ;;
+  back)    cmd_back "$@" ;;
+  auto)    cmd_auto "$@" ;;
+  status)  cmd_status "$@" ;;
+  canary)  cmd_canary "$@" ;;
+  help|-h|--help) print_help ;;
+  *)
+    echo "unknown subcommand: $cmd" >&2
+    print_help
+    exit 1
+    ;;
+esac
