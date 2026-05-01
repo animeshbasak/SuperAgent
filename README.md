@@ -1,10 +1,10 @@
 <div align="center">
 
-# SuperAgent
+<img src="docs/media/hero-superagent.svg" alt="SuperAgent — the routing brain that lives between your AI and your code" width="900" />
 
 ### Stop paying for tokens your AI burned re-reading your codebase.
 
-**Across 8 AI tools, 5 domains, and any LLM — paid or free.**
+**Across 8 AI tools, 6 domains, and any LLM — paid or free. Now with auto-routing on by default.**
 
 <a href="https://github.com/animeshbasak/SuperAgent/raw/main/docs/media/superagent-v2.2-reel.mp4">
   <img src="docs/media/superagent-v2.2-reel-poster.png" alt="SuperAgent v2.2 — 30-second feature reel (click to play)" width="820" />
@@ -81,6 +81,36 @@ $ superagent-switch to 3
 
 ---
 
+## How the brain routes
+
+```mermaid
+flowchart LR
+    U[Your task] --> B{superagent-brain<br/>auto-fires}
+    B -->|destructive op<br/>or '?' prefix| C[Confirm gate]
+    B -->|otherwise| R[Auto-execute]
+    C --> R
+    R --> CL[Classifier<br/>29 rules]
+    CL --> CH[Skill chain]
+    CH --> S1[skill 1]
+    S1 --> S2[skill 2]
+    S2 --> S3[skill 3]
+    S3 --> V[verification-before-completion]
+    style B fill:#7c3aed,color:#fff,stroke:#a78bfa
+    style R fill:#10b981,color:#fff,stroke:#34d399
+    style C fill:#f59e0b,color:#fff,stroke:#fbbf24
+    style V fill:#06b6d4,color:#fff,stroke:#22d3ee
+```
+
+**Default mode is auto-execute.** Type your task, the brain picks skills, runs them. Confirmation gates only fire on destructive ops (`ship`/`push`/`deploy`/`delete`/`drop`), security audits, ambiguous classifier output, or when you opt in with the `? ` prefix:
+
+```bash
+/superagent fix the auth bug                # auto-execute
+/superagent ? refactor the auth middleware  # show plan, confirm before running
+/superagent ship v2.3.0                     # forced confirm (destructive)
+```
+
+---
+
 ## Multi-domain routing
 
 Same router. Same savings. Every domain.
@@ -133,7 +163,7 @@ SuperAgent fixes all of it with five levers:
 | **graphify** | Codebase → queryable knowledge graph | **71.5x** fewer tokens per query |
 | **mempalace** | Cross-session memory, local-first | **96.6%** retrieval accuracy, no API keys |
 | **Routing brain** | "Fix bug" auto-routes to debug → TDD → verify | **20/20** on routing benchmark |
-| **17 battle-tested skills** | TDD, planning, review, security, UI, video | **Enforced**, not optional |
+| **33 battle-tested skills** | core 17 + 16 `agent-skills:*` (spec, plan, incremental, ADR, perf, browser-test, deprecation, …) | **Enforced**, not optional |
 | **Cost-aware fallback** | Auto-switch to local LLM when limits approach | **0 rate-limits hit** |
 
 ---
@@ -365,6 +395,15 @@ python3 bin/superagent-compile --platform all
 | "why did X happen" | investigate → mem-search |
 | "plan" / "roadmap" | brainstorming → writing-plans → plan-ceo-review → plan-eng-review |
 | 2+ independent tasks | dispatching-parallel-agents |
+| "PRD" / "spec" / "what to build" | `agent-skills:spec-driven-development` |
+| "ideate" / "stress-test the idea" | `agent-skills:idea-refine` |
+| "task breakdown" / "decompose" | `agent-skills:planning-and-task-breakdown` |
+| "API design" / "contract-first" | `agent-skills:api-and-interface-design` |
+| "deprecate" / "sunset" / "migration path" | `agent-skills:deprecation-and-migration` |
+| "ADR" / "architecture decision" | `agent-skills:documentation-and-adrs` |
+| "Core Web Vitals" / "perf audit" | `agent-skills:performance-optimization` |
+| "browser test" / "Chrome DevTools" | `agent-skills:browser-testing-with-devtools` |
+| "CI pipeline" / "GitHub Actions" | `agent-skills:ci-cd-and-automation` |
 
 ---
 
