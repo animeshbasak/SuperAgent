@@ -5,6 +5,17 @@ model: opus
 tools: Agent, Bash, Read, Glob, Grep, Write, Edit
 skills:
   - superagent
+# Per-agent hooks (Claude Code only). Mirrors the global PreToolUse safety
+# gate but scoped to this agent — guarantees the safety classifier still runs
+# even when superagent-brain is dispatched via the Agent tool. Source pattern:
+# references/claude-code-best-practice/.claude/agents/weather-agent.md.
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write|MultiEdit"
+      command: 'python3 "$HOME/.claude/superagent-safety.py"'
+  Stop:
+    - matcher: "*"
+      command: 'bash "$HOME/.claude/superagent-distill.sh" || true'
 ---
 
 # SuperAgent Brain — Autonomous Skill Router

@@ -129,12 +129,41 @@ if matched_complexities:
 else:
     final_complexity = "moderate"
 
+# ── 13-category multi-label tagging (codeburn-style) ─────────────────────────
+# Tags are independent of chain — they describe *what kind of work* this is,
+# regardless of which skills got routed. Useful for telemetry, billing, and
+# routing future budgets. Multi-label: one task can hit multiple categories.
+CATEGORY_PATTERNS = {
+    "coding":    r"\b(implement|build|write code|add (function|method|class)|wire (it|this) up)\b",
+    "debugging": r"\b(bug|fix|broken|error|crash|stack trace|traceback|debug|why (is|are|isn'?t)|root cause)\b",
+    "feature":   r"\b(add|build|create|implement) .*(feature|page|component|module|endpoint|button|toggle)\b",
+    "refactor":  r"\b(refactor|clean ?up|simplify|dedupe|duplicated|rename|extract)\b",
+    "test":      r"\b(test|tdd|spec|unit test|integration test|e2e|coverage|flaky)\b",
+    "plan":      r"\b(plan|spec|prd|roadmap|design doc|break down|decompose|requirements)\b",
+    "doc":       r"\b(doc|readme|comment|adr|decision record|changelog|writeup)\b",
+    "config":    r"\b(config|settings|env var|\.env|toml|yaml|ini)\b",
+    "security":  r"\b(security|owasp|injection|secret|vuln|audit|cve|xss|csrf|sql ?injection|auth(z|n)?)\b",
+    "infra":     r"\b(deploy|ship|release|tag|merge|ci|cd|pipeline|github actions|workflow|build|docker|kubernetes|k8s)\b",
+    "ui":        r"\b(ui|ux|design|component|page|layout|dashboard|landing|hero|navbar|sidebar|button|modal|3d|webgl|cinematic|premium|animation|motion|framer)\b",
+    "data":      r"\b(database|db|sql|postgres|mysql|mongo|redis|migration|schema|query|analytics|etl|pipeline)\b",
+    "meta":      r"\b(status|standup|update|stats|how many|how much|did we|last (week|time)|previously|office hours|narrowest wedge)\b",
+}
+
+categories = []
+for label, pat in CATEGORY_PATTERNS.items():
+    if re.search(pat, task, re.IGNORECASE):
+        categories.append(label)
+
 # ── parse history hint ───────────────────────────────────────────────────────
 try:
     hint = json.loads(history_hint_raw)
 except (json.JSONDecodeError, ValueError):
     hint = None
 
-result = {"chain": chain, "hint": hint, "meta": {"complexity": final_complexity}}
+result = {
+    "chain": chain,
+    "hint": hint,
+    "meta": {"complexity": final_complexity, "categories": categories},
+}
 print(json.dumps(result))
 PYEOF

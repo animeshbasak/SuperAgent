@@ -433,7 +433,7 @@ echo ""
 # ── Step 12: Install SuperAgent CLIs into ~/.local/bin/ ───────────────────────
 info "Installing SuperAgent CLIs..."
 
-for tool in superagent-classify superagent-ship superagent-learn; do
+for tool in superagent-classify superagent-ship superagent-learn superagent-oneshot; do
   src="$SCRIPT_DIR/bin/$tool"
   dst="$HOME/.local/bin/$tool"
   if [[ -f "$src" ]]; then

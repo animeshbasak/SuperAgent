@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# superagent-oneshot — compute one-shot rate from ~/.superagent/brain/routes.jsonl
+#
+# One-shot rate = % of tasks completed on the first attempt without a retry.
+# Definition (this implementation):
+#   For each task_hash in routes.jsonl, the *last* outcome wins. A task is
+#   one-shot if its first occurrence has outcome="done" AND the task_hash
+#   appears exactly once. If it appears multiple times, the agent had to
+#   retry — count it as a retry.
+#
+# Usage:
+#   superagent-oneshot           # human-readable
+#   superagent-oneshot --json    # machine-readable
+#
+# Source: codeburn/src/classifier.ts:120-143 (Edit→Bash→Edit detection),
+# adapted to our routes log format.
+
+set -euo pipefail
+
+ROUTES="${HOME}/.superagent/brain/routes.jsonl"
+JSON_MODE=0
+[[ "${1:-}" == "--json" ]] && JSON_MODE=1
+
+if [[ ! -s "$ROUTES" ]]; then
+  if [[ $JSON_MODE -eq 1 ]]; then
+    echo '{"total":0,"oneshot":0,"retried":0,"rate":null}'
+  else
+    echo "no routes yet — start using superagent to accumulate data"
+  fi
+  exit 0
+fi
+
+python3 - "$ROUTES" "$JSON_MODE" <<'PYEOF'
+import json
+import sys
+from collections import Counter
+
+path = sys.argv[1]
+json_mode = sys.argv[2] == "1"
+
+# task_hash -> [outcomes in order]
+ledger: dict[str, list[str]] = {}
+
+with open(path) as f:
+    for raw in f:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            r = json.loads(raw)
+        except Exception:
+            continue
+        h = r.get("task_hash") or ""
+        if not h:
+            continue
+        ledger.setdefault(h, []).append(r.get("outcome", ""))
+
+total = len(ledger)
+oneshot = 0
+retried = 0
+for outcomes in ledger.values():
+    if len(outcomes) == 1 and outcomes[0] == "done":
+        oneshot += 1
+    elif outcomes[-1] == "done":
+        retried += 1
+    else:
+        retried += 1
+
+rate = (oneshot / total) if total else None
+
+if json_mode:
+    out = {
+        "total": total,
+        "oneshot": oneshot,
+        "retried": retried,
+        "rate": round(rate, 3) if rate is not None else None,
+    }
+    print(json.dumps(out))
+else:
+    if total == 0:
+        print("no completed routes yet")
+        sys.exit(0)
+    pct = f"{rate * 100:.1f}%" if rate is not None else "n/a"
+    print(f"SuperAgent one-shot rate")
+    print("─" * 40)
+    print(f"  total tasks   : {total}")
+    print(f"  one-shot      : {oneshot}")
+    print(f"  retried       : {retried}")
+    print(f"  one-shot rate : {pct}")
+    if rate is not None:
+        if rate > 0.85:
+            print("  → routing is sharp")
+        elif rate > 0.65:
+            print("  → routing is healthy")
+        else:
+            print("  → routing wants tuning (check rules.yaml)")
+PYEOF

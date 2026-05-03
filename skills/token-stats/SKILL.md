@@ -86,6 +86,25 @@ superagent-cost week
 
 Shows cost grouped by model (opus / sonnet / haiku) and a model-mix coach note.
 
+## One-shot rate
+
+Also surface the routing one-shot rate — the share of tasks the brain routed
+correctly on first try without a retry. Distilled from
+`references/codeburn/src/classifier.ts:120-143` (Edit→Bash→Edit cycle
+detection), adapted to our `routes.jsonl` outcome ledger.
+
+```bash
+superagent-oneshot
+```
+
+Output is `total / oneshot / retried / rate` plus a coaching line. A rate
+above 85% means routing is sharp; under 65% means `rules.yaml` wants tuning.
+For machine-readable use:
+
+```bash
+superagent-oneshot --json
+```
+
 ## Badge Mode
 
 When `--badge` is passed, emit a pastable markdown badge that the user can drop into their own README to showcase their savings. Run:
