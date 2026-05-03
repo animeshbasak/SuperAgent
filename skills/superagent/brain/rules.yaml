@@ -169,4 +169,14 @@ rules:
     chain: [agent-skills:context-engineering]
     complexity: trivial
 
+  - name: risky-action
+    # Reversibility-aware gate. Prepends superagent-safety so the agent
+    # pauses + asks before destructive shell, history-rewrite, mass DB
+    # mutation, sensitive-file edit, or permission-skip flag.
+    # On Claude Code the PreToolUse hook (hooks/superagent-safety.py)
+    # enforces the same rules at the harness level.
+    signal: "(\\brm -rf\\b|\\bgit (push --force|reset --hard|branch -D|clean -f)|--no-verify\\b|--dangerously-skip-permissions\\b|\\b(DROP|TRUNCATE) (TABLE|DATABASE|SCHEMA)\\b|\\bmigrate down\\b|\\bmigration:rollback\\b|\\bmkfs\\b|\\bdd if=.*of=/dev/(sd|disk|nvme)|\\bkill(all)? -9\\b|\\bsudo rm\\b|\\bchmod -R 0?777\\b)"
+    chain: [superagent-safety]
+    complexity: complex
+
 build_archetypes: [bug, feature, ui, webgl, refactor, framer-motion]

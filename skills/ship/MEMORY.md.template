@@ -1,0 +1,21 @@
+# ship — agent memory
+
+> Auto-loaded by the brain on `ship` activation if present at
+> `~/.superagent/agent-memory/ship/MEMORY.md`. Keep ≤ 50 bullets.
+> Append structured logs via `learnings.jsonl`; distill into bullets here.
+
+## Current project shape
+<!-- What ships in this repo, who deploys it, where the canary lives. -->
+- _none yet_
+
+## Pre-flight gotchas
+<!-- Steps that bit us last time. -->
+- _none yet_
+
+## Verified-safe push patterns
+<!-- e.g. "main is protected; PRs require ultrareview before merge". -->
+- _none yet_
+
+## Anti-patterns
+<!-- Things ship has been tempted to do and shouldn't. -->
+- _none yet_

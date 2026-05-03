@@ -1,0 +1,20 @@
+# investigate — agent memory
+
+> Auto-loaded by the brain on `investigate` activation if present at
+> `~/.superagent/agent-memory/investigate/MEMORY.md`. Keep ≤ 50 bullets.
+
+## Known root causes (cataloged)
+<!-- Bug class -> typical root cause in THIS codebase. -->
+- _none yet_
+
+## Reproduction recipes
+<!-- Commands / states that reliably reproduce flaky behavior. -->
+- _none yet_
+
+## Off-limits hypotheses
+<!-- Things we've already disproved; don't revisit. -->
+- _none yet_
+
+## Tools that worked
+<!-- Diagnostic tools (devtools panel, log query, profiler) that paid off here. -->
+- _none yet_

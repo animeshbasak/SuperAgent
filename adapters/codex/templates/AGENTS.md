@@ -110,6 +110,41 @@ recent_429_count_60s >= 3
 | complex     | >80%   | KEEP Anthropic + warn — let user override     |
 | any         | 429×3  | switch immediately + confirm                  |
 
+## 3-tier router (formal model)
+
+Distilled from `references/ruflo/v3/@claude-flow/integration/src/multi-model-router.ts`
+and `references/codeburn/src/models.ts`. Each Claude Code task goes through
+exactly one tier. Tiers escalate; they do **not** fall through automatically —
+the brain commits before issuing the call.
+
+| tier | latency | cost / call | examples                                                  | maps to                                    |
+|------|---------|-------------|-----------------------------------------------------------|--------------------------------------------|
+| 1    | < 1 ms  | $0          | classify task, format JSON, regex extract, route lookup  | superagent-classify, local WASM, awk/jq    |
+| 2    | ~ 500 ms| ~ $0.0002   | one-shot questions, small edits, doc lookups, simple chat | Haiku 4.5, qwen2.5-coder:7b, llama3.1:8b   |
+| 3    | 2-5 s   | $0.003-0.015| multi-step reasoning, large refactors, plans, debugging   | Sonnet 4.6, Opus 4.7, qwen3-coder:next     |
+
+### Tier-selection inputs (in order)
+
+1. **`meta.complexity` from classifier** — `trivial → 1 or 2`, `moderate → 2`, `complex → 3`.
+2. **Budget pressure** — `pct_of_plan > 0.80` shifts a tier down (3→2, 2→1).
+3. **Backend mode** — `local-only` skips tier 3.
+4. **User override** — `/superagent-switch to <model>` pins a tier.
+
+### Tier escalation rule
+
+> Once a task starts on tier *N*, it stays on *N*. If the agent finds the model
+> can't complete the task (refuses, loops, returns malformed), the agent
+> returns control to the brain with `escalate=true` and the brain commits to
+> tier *N+1* on the *next* call only. No silent retry on a different model;
+> every flip is logged in `routes.jsonl` with `escalation: true`.
+
+### Why no auto-tier-3 fallback
+
+Falling through tiers silently is how cost spirals start. The 3-tier model is
+explicit because the previous "always use the best available" default cost more
+in dropped quality (mid-task model swap) than the modest tier-1 errors it
+prevented.
+
 ## Recovery
 
 - If switching breaks Claude Code → `superagent-switch back` restores Anthropic.
@@ -1554,45 +1589,210 @@ In every abort case: leave the repo in a clean state (no half-written CHANGELOG,
 
 ## Procedure
 
-**1. Load context (always).** Run once per session only:
+**1. Detect backend (always).** First call only:
 ```bash
-mempalace wake-up 2>/dev/null | head -60 || true
+backend=$(superagent-switch status 2>/dev/null | awk '/^mode:/ {print $2}')
+[ -z "$backend" ] && backend="anthropic"
+```
+If `backend=local`, run in **lite mode**: skip step 2 context load, cap chain at 3 skills, shorter announce format, prefer `agent-skills:*` skills (more deterministic step-by-step) over open-ended ones. Local models handle structured checklists better than free-form reasoning.
+
+**2. Load context (cloud only).** Skip on local backend. Otherwise run once per session:
+```bash
+command -v mempalace >/dev/null 2>&1 && mempalace wake-up 2>/dev/null | head -60 || true
 ```
 
-**2. Classify.** Run the classifier on `$ARGUMENTS`:
+**3. Classify.** Run the classifier on `$ARGUMENTS`:
 ```bash
-superagent-classify "$ARGUMENTS"
+if command -v superagent-classify >/dev/null 2>&1; then
+  superagent-classify "$ARGUMENTS"
+else
+  echo '{"chain":[],"hint":null}'
+fi
 ```
-The output is JSON `{chain: [...], hint: [...|null]}`. `chain` is the proposed sequence. `hint` is a prior successful chain for similar tasks — use as a tiebreaker.
+Output is JSON `{chain: [...], hint: [...|null]}`. **If classifier missing or chain empty:** fall back to keyword matching against the available skills list shown in your system reminders — including the `agent-skills:*` namespace (16 skills imported from agent-skills covering define → plan → build → verify → ship). Pick top-3 by description overlap and ask user.
 
-**3. Announce.** Print to the user:
+**4. Announce.** Print to the user:
 ```
 SuperAgent routing plan for: "<task>"
+Backend: <anthropic|local:model-name>
 Chain: skill1 → skill2 → skill3
 Rationale: <one line why each skill was selected>
 Estimated effort: <rough>
 Proceed? (yes / edit / skip N / run-only N)
 ```
+On local backend, omit Rationale and Estimated effort lines — keep announce ≤4 lines total.
 
-**4. Confirm.** Wait for user reply unless the task is trivially small (single-skill chain) — then proceed.
+**5. Auto-execute (default).** Do NOT ask "Proceed?". The user opted in by invoking SuperAgent. Skip the confirmation gate and start running the chain immediately.
 
-**5. Execute.** For each skill in the chain, invoke via the Skill tool in order. Between skills, summarize the artifact produced in one sentence. If a skill fails or user says "stop", halt and report.
-
-**6. Log.** After completion (or halt), append to `~/.superagent/brain/routes.jsonl`:
-```json
-{"ts": "<iso>", "task_hash": "<sha256-12>", "task": "<first 120 chars>", "chain": [...], "outcome": "done|halt|fail", "user_override": "yes|no"}
+**Opt-in confirm prefix.** If `$ARGUMENTS` starts with `? ` (literal question mark + space), strip the prefix before classifying and run in **confirm mode** for this call only — show the chain and wait for `yes/edit/skip N/run-only N`. Pre-process (works in bash and zsh):
+```bash
+TASK="$ARGUMENTS"
+CONFIRM="auto"
+if [ "${TASK:0:2}" = "? " ]; then
+  CONFIRM="yes"
+  TASK="${TASK#? }"
+fi
 ```
 
+**Force-confirm (override auto, even without `?` prefix):**
+- Task or chain contains a destructive op: `ship`, `deploy`, `push`, `force`, `delete`, `drop`, `rm`, `migrate down`, `revert`, `reset --hard`.
+- Chain includes `cso` or `security-review` (findings should be reviewed first).
+- Local backend AND chain length > 3 (offer to trim or confirm full plan).
+- Classifier returned empty/`mempalace-wake` only AND keyword-match has no high-confidence single skill.
+
+**6. Execute.** For each skill in the chain, invoke via the Skill tool in order. Between skills, summarize the artifact produced in one sentence. If a skill fails or user says "stop", halt and report.
+
+**7. Log.** After completion (or halt), append to `~/.superagent/brain/routes.jsonl` (auto-create if missing):
+```bash
+mkdir -p ~/.superagent/brain
+# then append the route record
+```
+```json
+{"ts": "<iso>", "task_hash": "<sha256-12>", "task": "<first 120 chars>", "chain": [...], "outcome": "done|halt|fail", "user_override": "yes|no", "backend": "<anthropic|local>"}
+```
+
+## Skill namespaces
+
+The roster is organized into namespaces. Pick from any:
+
+- **Bare names** — core SuperAgent skills (`ship`, `review`, `cso`, `simplify`, `investigate`, `learn`, plan-* family, `auto-fallback`, `superagent-switch`, `free-llm`, etc.)
+- **`agent-skills:*`** — Addy Osmani's production engineering skills (16 skills): `idea-refine`, `spec-driven-development`, `planning-and-task-breakdown`, `incremental-implementation`, `test-driven-development`, `context-engineering`, `source-driven-development`, `frontend-ui-engineering`, `api-and-interface-design`, `browser-testing-with-devtools`, `debugging-and-error-recovery`, `performance-optimization`, `git-workflow-and-versioning`, `ci-cd-and-automation`, `deprecation-and-migration`, `documentation-and-adrs`. Step-by-step + verifiable; preferred when a process must be followed exactly (especially on local models).
+- **`superpowers:*`** — Claude Code superpowers (TDD, debugging, brainstorming, plan execution).
+- **`claude-mem:*`, `caveman:*`, `vercel:*`, `ui-ux-pro-max:*`** — domain plugins.
+
+When a core skill and an `agent-skills:*` skill overlap (e.g. `simplify` vs `agent-skills:incremental-implementation` for refactor work), the bare-name SuperAgent skill wins by default. Prefer the `agent-skills:*` version explicitly when the user wants step-by-step rigor or when running on a local model.
+
+## Local-backend rules (when `backend=local`)
+
+Local models (Qwen, Llama, DeepSeek via free-claude-code proxy) need extra discipline:
+
+- **Cap chains at 3 skills.** Longer chains lose coherence on weaker models.
+- **No mempalace pre-load.** Saves ~4k tokens of context the model can't use well.
+- **Prefer `agent-skills:*`** for build/verify/ship tasks — their explicit checklists translate better than free-form skill prose.
+- **Skip `claude-api` skill** — it's Anthropic-SDK-specific and confuses non-Anthropic backends. Suggest `free-llm` if user wants AI-app guidance.
+- **Single-skill route by default** for trivial questions — don't chain just to chain.
+- **Don't promise tool reliability.** If a skill needs a specific MCP (Chrome DevTools, Notion, etc.), tell the user to verify it's connected before running.
+
 ## Fallback — classifier uncertain
-If the chain contains only `mempalace-wake` (no rule matched), show the top-3 candidate single skills based on description-keyword overlap and ask the user to pick.
+If classifier is missing or returns an empty chain:
+1. Read the available skills list from your system reminders.
+2. Match user's task keywords against skill descriptions (prefer exact verb matches: "build" → builds, "fix" → debugging, "ship" → ship).
+3. Show top-3 candidates and let user pick.
+4. Never invent a skill name not in the list.
 
 ## What stays manual
 - Plan Mode (Shift+Tab twice) — user's call.
 - Rewind (Esc Esc) — user's call.
 - Permission grants — `/permissions`.
+- Backend switch — user runs `/superagent-switch to <model>` or `back`.
 
 ## Verification
-After each skill runs, require the skill's own output. For build/fix chains, the final `verification-before-completion` must pass before declaring done.
+After each skill runs, require the skill's own output. For build/fix chains, the final `verification-before-completion` (or `agent-skills:test-driven-development` Verification block on local backend) must pass before declaring done.
+
+---
+
+### superagent-safety
+> Reversibility-aware action gate. Universal rule any backend can follow. Triggers BEFORE the agent issues a destructive shell command, force-push, history-rewrite, mass DB mutation, sensitive-file edit, or permission-skip flag. On Claude Code, the hooks/superagent-safety.py PreToolUse hook enforces this same logic at the harness level. Use whenever the request leads toward "rm -rf", "git push --force", "git reset --hard", "DROP", "TRUNCATE", "--no-verify", "--dangerously-skip-permissions", "migrate down", "kill -9", or edits to .env / .ssh / credentials / .pem / .key / /etc.
+
+# SuperAgent Safety
+
+> **Doctrine: reversibility over speed.** A pause to confirm costs seconds. An unwanted destructive op costs hours and trust. Always pause-and-ask on irreversible actions, even when the user appears to have asked for them earlier in the session — *authorization is scoped to what was actually requested, not extrapolated from it.*
+
+## When to use
+
+This skill is consulted **before** the agent issues a tool call whose effect is hard to reverse. Triggering signals:
+
+- Bash commands matching the risky list below
+- Edit / Write to a sensitive path
+- Git operations that rewrite history or overwrite remotes
+- Database statements without a `WHERE` clause
+- Network egress in `local-only` mode
+- Any flag whose name contains `force`, `--no-verify`, `--dangerously-`, `--skip-`
+
+## Risky pattern catalog
+
+### Filesystem
+- `rm -rf`, `sudo rm`, `chmod -R 777`, `dd if=… of=/dev/{sd,disk,nvme}`, `mkfs.*`
+- Fork bomb (`:(){ :|:& };:`)
+
+### Git history & remotes
+- `git push --force` (use `--force-with-lease` if absolutely required, and even then prefer not to)
+- `git reset --hard`, `git clean -f`, `git checkout .`, `git restore .`, `git branch -D`
+- `git commit --amend` on already-pushed commits
+- `--no-verify` (skipping pre-commit hooks); `git rebase -i` (interactive — needs human)
+
+### Database
+- `DROP TABLE | DATABASE | SCHEMA | INDEX | VIEW`
+- `TRUNCATE TABLE`
+- `DELETE FROM <table>` without `WHERE`
+- `UPDATE <table> SET …` without `WHERE`
+- `migrate down`, `migration:rollback`
+
+### Package & dependency
+- `npm uninstall`, `pip uninstall`, package-lock or lockfile deletes, dependency downgrades
+
+### Process & permissions
+- `kill -9`, `pkill -9`, `killall -9`
+- `--dangerously-skip-permissions` — never. Use `/permissions` instead.
+
+### Sensitive paths (Edit / Write blocked unless pre-authorized)
+- `.env`, `.env.*`
+- `~/.aws/credentials`, `~/.ssh/id_{rsa,ed25519,dsa,ecdsa}` (and `.pub`)
+- Any `*.pem`, `*.key`, `.netrc`
+- `/etc/`, `/System/`
+
+## Decision matrix
+
+| Pattern | Decision | Rationale |
+|---|---|---|
+| Fork bomb / `dd` to raw disk / `mkfs` | **deny** (hard refuse) | No legitimate use during agent work. |
+| `rm -rf`, force-push, history rewrite, sensitive-file edit, mass DB mutation | **ask** | Reversibility unclear; user must confirm scope. |
+| All other | **allow** | Default trust on the IDE's permission system. |
+
+## Procedure
+
+When you detect a risky action:
+
+1. **Pause** before issuing the tool call.
+2. **State the action and the reversibility cost** in one sentence. Example:
+   > "About to run `git push --force origin main`. This rewrites the remote history of the protected branch and is hard to undo if collaborators have pulled. Confirm?"
+3. **Suggest a safer alternative** when one exists:
+   - `git push --force` → `git push --force-with-lease`
+   - `git reset --hard` → stash + soft reset
+   - `rm -rf <dir>` → `mv <dir> /tmp/superagent-trash-$(date +%s)/`
+   - `DROP TABLE` → `RENAME TABLE … TO _archive_…` then `DROP` after a cooling period
+4. **Check pre-authorization sources** (only on Claude Code, automatic):
+   - `~/.superagent/safety/allow.txt` — one regex per line
+   - `~/.claude/CLAUDE.md` section `## SuperAgent Safety Allow`
+   - `SUPERAGENT_SAFETY=off` env
+5. **If user re-confirms in plain English ("yes do it", "approved", "go ahead"), proceed.** Do not interpret silence or unrelated approvals as consent.
+
+## Anti-patterns
+
+- **Bypassing on the assumption of "they meant this"**: explicit user words on this turn, every time.
+- **Adding `|| true` after a risky op to mask failure**: you're hiding signal you should be reading.
+- **Renaming the risky op**: `rm -rf` wrapped in a script with a friendly name is still `rm -rf`.
+- **Asking once and assuming a session-wide green light**: scope of approval is the operation as described, not similar future ops.
+
+## Bypass surface (only if you know what you're doing)
+
+The user can opt out of any rule by:
+
+- Adding a regex to `~/.superagent/safety/allow.txt` (one per line).
+- Adding a bullet under `## SuperAgent Safety Allow` in `~/.claude/CLAUDE.md` with a regex string.
+- Setting `SUPERAGENT_SAFETY=off` in the environment for a session-wide bypass.
+
+## Provenance
+
+Distilled from:
+- `references/system_prompts_leaks/Anthropic/claude-code.md` — reversibility doctrine
+- `references/claude-code-best-practice/.claude/hooks/` — hook-event surface
+- `references/ruflo/v3/@claude-flow/hooks/` — PreToolUse interception pattern
+
+The Claude Code harness enforces these rules automatically via
+`hooks/superagent-safety.py` (PreToolUse). On other backends (Codex,
+Gemini, Copilot, Continue, Aider, Cursor, Windsurf), the agent
+self-polices using this skill.
 
 ---
 

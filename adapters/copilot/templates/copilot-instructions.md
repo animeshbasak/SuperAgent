@@ -277,6 +277,22 @@ For each bullet, produce explicit findings with file:line references.
 *(Full instructions available in SuperAgent skills directory)*
 
 
+### superagent-safety
+> Reversibility-aware action gate. Universal rule any backend can follow. Triggers BEFORE the agent issues a destructive shell command, force-push, history-rewrite, mass DB mutation, sensitive-file edit, or permission-skip flag. On Claude Code, the hooks/superagent-safety.py PreToolUse hook enforces this same logic at the harness level. Use whenever the request leads toward "rm -rf", "git push --force", "git reset --hard", "DROP", "TRUNCATE", "--no-verify", "--dangerously-skip-permissions", "migrate down", "kill -9", or edits to .env / .ssh / credentials / .pem / .key / /etc.
+
+# SuperAgent Safety
+
+> **Doctrine: reversibility over speed.** A pause to confirm costs seconds. An unwanted destructive op costs hours and trust. Always pause-and-ask on irreversible actions, even when the user appears to have asked for them earlier in the session — *authorization is scoped to what was actually requested, not extrapolated from it.*
+
+## When to use
+
+This skill is consulted **before** the agent issues a tool call whose effect is hard to reverse. Triggering signals:
+
+- Bash comman
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
 ### superagent-switch
 > Drive the `superagent-switch` CLI to inspect, swap, or restore the active LLM backend. Triggers on "list local models", "switch to <model>", "switch back", "restore anthropic", "canary <model>", "what model am i on", "auto fallback on/off", "/superagent-switch <op>". Use when the user wants direct, surgical control over the model swap — not when they're asking *whether* to switch (that is `auto-fallback`) or *how to set up* the proxy (that is `free-llm`).
 

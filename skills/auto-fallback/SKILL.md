@@ -79,6 +79,41 @@ recent_429_count_60s >= 3
 | complex     | >80%   | KEEP Anthropic + warn — let user override     |
 | any         | 429×3  | switch immediately + confirm                  |
 
+## 3-tier router (formal model)
+
+Distilled from `references/ruflo/v3/@claude-flow/integration/src/multi-model-router.ts`
+and `references/codeburn/src/models.ts`. Each Claude Code task goes through
+exactly one tier. Tiers escalate; they do **not** fall through automatically —
+the brain commits before issuing the call.
+
+| tier | latency | cost / call | examples                                                  | maps to                                    |
+|------|---------|-------------|-----------------------------------------------------------|--------------------------------------------|
+| 1    | < 1 ms  | $0          | classify task, format JSON, regex extract, route lookup  | superagent-classify, local WASM, awk/jq    |
+| 2    | ~ 500 ms| ~ $0.0002   | one-shot questions, small edits, doc lookups, simple chat | Haiku 4.5, qwen2.5-coder:7b, llama3.1:8b   |
+| 3    | 2-5 s   | $0.003-0.015| multi-step reasoning, large refactors, plans, debugging   | Sonnet 4.6, Opus 4.7, qwen3-coder:next     |
+
+### Tier-selection inputs (in order)
+
+1. **`meta.complexity` from classifier** — `trivial → 1 or 2`, `moderate → 2`, `complex → 3`.
+2. **Budget pressure** — `pct_of_plan > 0.80` shifts a tier down (3→2, 2→1).
+3. **Backend mode** — `local-only` skips tier 3.
+4. **User override** — `/superagent-switch to <model>` pins a tier.
+
+### Tier escalation rule
+
+> Once a task starts on tier *N*, it stays on *N*. If the agent finds the model
+> can't complete the task (refuses, loops, returns malformed), the agent
+> returns control to the brain with `escalate=true` and the brain commits to
+> tier *N+1* on the *next* call only. No silent retry on a different model;
+> every flip is logged in `routes.jsonl` with `escalation: true`.
+
+### Why no auto-tier-3 fallback
+
+Falling through tiers silently is how cost spirals start. The 3-tier model is
+explicit because the previous "always use the best available" default cost more
+in dropped quality (mid-task model swap) than the modest tier-1 errors it
+prevented.
+
 ## Recovery
 
 - If switching breaks Claude Code → `superagent-switch back` restores Anthropic.
