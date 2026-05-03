@@ -1,0 +1,26 @@
+{
+  "_comment": "SuperAgent MCP baseline. Opt-in groups via env: MCP_GROUP_BROWSER=1 enables playwright; MCP_GROUP_DOCS=1 enables context7+deepwiki. All groups on by default; set to 0 to disable.",
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "env": {
+        "MCP_GROUP": "browser"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"],
+      "env": {
+        "MCP_GROUP": "docs"
+      }
+    },
+    "deepwiki": {
+      "command": "npx",
+      "args": ["-y", "deepwiki-mcp@latest"],
+      "env": {
+        "MCP_GROUP": "docs"
+      }
+    }
+  }
+}

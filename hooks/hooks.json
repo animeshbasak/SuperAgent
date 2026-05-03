@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/hooks.json",
+  "_comment": "Reference layout — install.sh writes the live config into ~/.claude/settings.json. Edit there for runtime; edit here to update the docs/template.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/superagent-safety.py\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/superagent-session-start.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/superagent-tracker.sh\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/superagent-distill.sh\" || true"
+          }
+        ]
+      }
+    ]
+  }
+}

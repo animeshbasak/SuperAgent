@@ -306,6 +306,73 @@ else
 fi
 echo ""
 
+# ── Step 9b: Install Python safety + session-start hooks ─────────────────────
+info "Installing PreToolUse safety gate + SessionStart hook..."
+
+SAFETY_SRC="$SCRIPT_DIR/hooks/superagent-safety.py"
+SESSION_SRC="$SCRIPT_DIR/hooks/superagent-session-start.py"
+
+if [[ -f "$SAFETY_SRC" && -f "$SESSION_SRC" ]]; then
+  cp "$SAFETY_SRC"  "$CLAUDE_DIR/superagent-safety.py"
+  cp "$SESSION_SRC" "$CLAUDE_DIR/superagent-session-start.py"
+  chmod +x "$CLAUDE_DIR/superagent-safety.py" "$CLAUDE_DIR/superagent-session-start.py"
+  ok "Python hooks installed to ~/.claude/"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 not on PATH — hooks will be inert until installed"
+  fi
+
+  node - <<'JSEOF'
+const fs = require('fs'), path = require('path');
+const file = path.join(process.env.HOME, '.claude', 'settings.json');
+let cfg = {};
+try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+cfg.hooks = cfg.hooks || {};
+
+const safetyCmd = `python3 "${path.join(process.env.HOME, '.claude', 'superagent-safety.py')}"`;
+const sessionCmd = `python3 "${path.join(process.env.HOME, '.claude', 'superagent-session-start.py')}"`;
+
+cfg.hooks.PreToolUse = cfg.hooks.PreToolUse || [];
+const safetyWired = cfg.hooks.PreToolUse.some(h =>
+  h.hooks && h.hooks.some(hh => hh.command && hh.command.includes('superagent-safety'))
+);
+if (!safetyWired) {
+  cfg.hooks.PreToolUse.push({
+    matcher: "Bash|Edit|Write|MultiEdit|NotebookEdit",
+    hooks: [{ type: "command", command: safetyCmd }]
+  });
+}
+
+cfg.hooks.SessionStart = cfg.hooks.SessionStart || [];
+const sessionWired = cfg.hooks.SessionStart.some(h =>
+  h.hooks && h.hooks.some(hh => hh.command && hh.command.includes('superagent-session-start'))
+);
+if (!sessionWired) {
+  cfg.hooks.SessionStart.push({
+    matcher: "*",
+    hooks: [{ type: "command", command: sessionCmd }]
+  });
+}
+
+fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
+JSEOF
+  ok "PreToolUse + SessionStart hooks wired in ~/.claude/settings.json"
+else
+  warn "Python hook scripts not found — skipping safety + session-start install"
+fi
+echo ""
+
+# ── Step 9c: Install .mcp.json baseline ──────────────────────────────────────
+MCP_SRC="$SCRIPT_DIR/.mcp.json"
+PROJECT_MCP="$SCRIPT_DIR/.mcp.json"  # already lives at repo root, no copy needed
+if [[ -f "$MCP_SRC" ]]; then
+  ok "Project MCP baseline available at $MCP_SRC (playwright, context7, deepwiki)"
+  info "Claude Code auto-loads .mcp.json from the project root."
+else
+  warn ".mcp.json not found at repo root — skipping"
+fi
+echo ""
+
 # ── Step 10: Install token savings tracker ────────────────────────────────────
 info "Installing token savings tracker..."
 TRACKER_SRC="$SCRIPT_DIR/hooks/superagent-tracker.sh"
