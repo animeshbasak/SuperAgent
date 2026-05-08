@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INIT_SCRIPT="$SCRIPT_DIR/../hooks/superagent-state-init.sh"
 
 TMPHOME=$(mktemp -d)
+trap 'rm -rf "$TMPHOME"' EXIT
 HOME="$TMPHOME" bash "$INIT_SCRIPT" > /dev/null
 
 EXPECTED=(
@@ -35,5 +36,4 @@ if ! grep -q '^\[learning\]' "$TMPHOME/.superagent/defaults.toml"; then
   fail=1
 fi
 
-rm -rf "$TMPHOME"
 [[ $fail -eq 0 ]] && echo "test-state-init: PASS" || { echo "test-state-init: FAIL"; exit 1; }
