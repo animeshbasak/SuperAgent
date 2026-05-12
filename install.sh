@@ -28,6 +28,18 @@ info() { echo -e "${CYAN}→${NC} $*"; }
 warn() { echo -e "${YELLOW}!${NC} $*"; }
 fail() { echo -e "${RED}✗ $*${NC}" >&2; exit 1; }
 
+# ── Wave 1 migration: v2.3 → v2.4 backup + marker (idempotent) ──────────────
+WAVE1_MARKER="$HOME/.superagent/.wave-1.installed"
+SA_ROOT="$HOME/.superagent"
+mkdir -p "$SA_ROOT/cost" "$SA_ROOT/.backups" 2>/dev/null || true
+
+if [[ ! -f "$WAVE1_MARKER" ]] && [[ -f "$SA_ROOT/cost/calls.jsonl" ]]; then
+  if [[ ! -f "$SA_ROOT/cost/calls.v1.jsonl.bak" ]]; then
+    cp "$SA_ROOT/cost/calls.jsonl" "$SA_ROOT/cost/calls.v1.jsonl.bak"
+    info "v1 calls.jsonl backed up to calls.v1.jsonl.bak (Wave 1 schema upgrade)"
+  fi
+fi
+
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║      Superagent Installer v1.1       ║${NC}"
