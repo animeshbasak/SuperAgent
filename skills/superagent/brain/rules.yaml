@@ -199,4 +199,44 @@ rules:
     chain: [token-stats]
     complexity: trivial
 
+  - name: agent-architect
+    signal: "\\b(design (the |an? )?API|system architecture|DDD|domain[ -]driven|bounded context|module boundaries|api design)\\b"
+    chain: [agent:architect]
+    complexity: complex
+
+  - name: agent-coder
+    signal: "\\b(implement (the |a |an |new |another )?(new |the )?(feature|endpoint|handler|module|webhook|service)|refactor (the |this |our )|debug (the |this ))\\b"
+    chain: [agent:coder]
+    complexity: moderate
+
+  - name: agent-reviewer
+    signal: "\\b(review (this |the |my |our )?(diff|PR|code|change|pull[ -]request)|audit (the |this )?(diff|PR|change))\\b"
+    chain: [agent:reviewer]
+    complexity: moderate
+
+  - name: agent-security-architect
+    signal: "\\b(threat[ -]?model|security review|attack surface|defense in depth|STRIDE)\\b"
+    chain: [agent:security-architect]
+    complexity: complex
+
+  - name: agent-tester
+    signal: "\\b(write (the |a |unit |integration |e2e )?tests?|TDD (the |this )|test coverage|coverage gap|test the )\\b"
+    chain: [agent:tester]
+    complexity: moderate
+
+  - name: autopilot
+    signal: "\\b(autopilot|run unattended|keep working|loop on (the |my )?(todo|task)|loop on the open|/loop)\\b"
+    chain: [autopilot]
+    complexity: moderate
+
+  - name: observability
+    signal: "\\b(show (me )?the trace|trace for|p50|p95|p99|metric|metrics for|histogram of|anomaly|spans?\\.jsonl)\\b"
+    chain: [observability]
+    complexity: trivial
+
+  - name: aidefence
+    signal: "\\b(scan (this |the )?prompt|prompt[ -]?injection|jailbreak detect|PII scan|defend prompts?)\\b"
+    chain: [aidefence]
+    complexity: trivial
+
 build_archetypes: [bug, feature, ui, webgl, refactor, framer-motion]

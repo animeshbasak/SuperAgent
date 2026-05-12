@@ -4,7 +4,7 @@
 
 ### Stop paying for tokens your AI burned re-reading your codebase.
 
-**One brain. Seven IDEs. 23 skills. 31/31 routing accuracy. Self-improving. Free local fallback.**
+**One brain. Seven IDEs. 26 skills. 37/37 routing accuracy. Self-improving. Per-prompt defense. Free local fallback.**
 
 <a href="https://github.com/animeshbasak/SuperAgent/raw/main/docs/media/superagent-v2.4-reel.mp4">
   <img src="docs/media/superagent-v2.2-reel-poster.png" alt="SuperAgent v2.4 — Wave 1 reel (click to play)" width="820" />
@@ -21,12 +21,27 @@ bash SuperAgent/install-universal.sh
 [![Platforms](https://img.shields.io/badge/platforms-8-blue)](#works-with-every-ai-coding-tool-you-use)
 [![Bench](https://img.shields.io/badge/bench-31%2F31%20PASS-brightgreen)](#proof)
 [![Skills](https://img.shields.io/badge/skills-23-purple)](#21-skills-auto-routed)
-[![Wave 1](https://img.shields.io/badge/v2.4-Wave_1_Foundation-blueviolet)](#whats-new-in-v240--wave-1-foundation)
+[![Wave 2](https://img.shields.io/badge/v2.5-Wave_2_Autonomous-blueviolet)](#whats-new-in-v250--wave-2-autonomous--safe)
 [![Token Savings](https://img.shields.io/badge/token_savings-95%25-brightgreen)](#the-receipt-share-your-savings)
 [![Free LLM Fallback](https://img.shields.io/badge/free_LLM-fallback-orange)](#act-2--the-system)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
+
+---
+
+## What's new in v2.5.0 — Wave 2: Autonomous & Safe
+
+> **The brain now defends, dispatches, observes, and loops.** Four foundations on top of v2.4: per-prompt threat scanner (AIDefence), 5 specialist dispatch agents, full JSONL observability, and a budget-gated `/loop`.
+
+| Pillar | What it does | Where it lives |
+|---|---|---|
+| 🛡 **AIDefence** | 58 shipped regex patterns across 6 attack categories + 8 PII detectors. Wired into `UserPromptSubmit`: critical → deny, high → ask, PII → log. Adaptive EMA via `feedback`. Default off; opt-in. Corpus gate FP<5% TP>85%. | `bin/superagent-aidefence`, `skills/aidefence/patterns.json`, [skill](skills/aidefence/SKILL.md) |
+| 🧑‍💼 **5 specialist agents** | `architect` / `coder` / `reviewer` / `security-architect` / `tester`. Each carries a scoped `PreToolUse` safety hook so the gate survives subagent dispatch. Classifier routes specialist keywords. | `agents/*.md`, [routing rules](skills/superagent/brain/rules.yaml) |
+| 📊 **Observability** | JSONL spans + metrics, no OTel. `superagent-trace <id>` builds parent-child tree with p95 bottleneck flag. `superagent-metrics` aggregates counter/gauge/histogram with p50/p95/p99 + anomaly. Daily rotation + 30d retention. | `bin/superagent-{obs,trace,metrics,obs-rotate}`, [skill](skills/observability/SKILL.md) |
+| 🤖 **Autopilot** | Bounded `/loop` (≤1000 iter, ≤24h). 3-source task discovery + pattern-driven predict at 0.7 confidence. Budget gate pauses at 90% spend. Cache-warm `ScheduleWakeup` at 270s. Default off. | `bin/superagent-autopilot`, [skill](skills/autopilot/SKILL.md) |
+
+**Receipts**: 22 sequential tasks, 5 commits on `wave-2-autonomous`, 16 new test scripts, 37/37 bench prompts at AVG 1.000, AIDefence corpus FP 2% / TP 86%.
 
 ---
 
@@ -65,7 +80,7 @@ The vendors don't fix these because the bills are the product. So we built the l
 
 ### Act 2 — The system
 
-SuperAgent is the layer between you and the model. You write your task once. The brain reads it, scores it against 23 skills, picks the chain, gates the risky calls, watches your budget, learns which chains actually worked, and falls through to a free local model the second your plan starts to bleed.
+SuperAgent is the layer between you and the model. You write your task once. The brain reads it, scores it against 26 skills, picks the chain, scans the prompt for injection, dispatches to specialist agents when complexity warrants, gates the risky calls, watches your budget, learns which chains actually worked, observes its own behavior with rotated JSONL, and falls through to a free local model the second your plan starts to bleed.
 
 ```
             ┌──────────────────────────────────────────────┐
@@ -98,8 +113,8 @@ SuperAgent is the layer between you and the model. You write your task once. The
                             │
                             ▼
        ┌─────────────────────────────────────────────────────────┐
-       │  ④ SKILLS RUN     23 skills × 7 IDEs                    │
-       │     bench: 31/31 PASS · AVG 1.000 · HARD GATE PASS      │
+       │  ④ SKILLS RUN     26 skills × 7 IDEs                    │
+       │     bench: 37/37 PASS · AVG 1.000 · HARD GATE PASS      │
        │     memory persists across sessions (mempalace)          │
        └─────────────────────────────────────────────────────────┘
 ```
@@ -147,7 +162,7 @@ The cleanest way to read the table: SuperAgent is the *router*. Cursor / Cline /
 | **Multi-platform compile (1 source → 7 IDEs)** | ✅ | locked to Cursor | locked to GitHub | locked to VS Code | locked to Aider CLI | locked to .continue | n/a | n/a |
 | **Knowledge graph + cross-session memory** | ✅ graphify+mempalace | partial | — | — | — | — | ✅ memory-only | — |
 | **Multi-domain (code + video + design + WebGL)** | ✅ | code only | code only | code only | code only | code only | code only | code only |
-| **23 routed skills, ⩾0.90 hard-gate bench** | ✅ 31/31 | — | — | — | — | rules-only | — | unrouted |
+| **26 routed skills, ⩾0.90 hard-gate bench** | ✅ 37/37 | — | — | — | — | rules-only | — | unrouted |
 | **Per-skill agent-memory** | ✅ | — | — | — | — | — | partial | — |
 | **Open-source, local-first, no API key required** | ✅ MIT | proprietary | proprietary | MIT | Apache 2.0 | Apache 2.0 | MIT | MIT |
 | **Token savings receipt + shareable badge** | ✅ | — | — | — | — | — | — | — |
@@ -208,7 +223,7 @@ bash install.sh                                # Claude Code (original)
 | `graphify`            | Build and query your codebase knowledge graph |
 | `mempalace`           | Local-first cross-session memory |
 
-### 23 skills, auto-routed
+### 26 skills, auto-routed
 
 | Skill | When it fires |
 |---|---|
@@ -333,7 +348,7 @@ For video-craft, every render auto-stamps a footer: `Rendered by SuperAgent · 4
 
 **Does it work with my existing Claude setup?** Additive only. Zero modification to existing files — verified by MD5 on every release.
 
-**I'm on Cursor, not Claude Code. Does it work?** Yes. The compiler turns 23 skills into Cursor `.mdc` rules, Codex `AGENTS.md`, Copilot instructions, Continue rules, etc. — whatever your platform expects. Hooks fire on Claude Code only (full 9-event lifecycle as of v2.4); on every other platform the agent self-polices via the `superagent-safety` skill.
+**I'm on Cursor, not Claude Code. Does it work?** Yes. The compiler turns 26 skills into Cursor `.mdc` rules, Codex `AGENTS.md`, Copilot instructions, Continue rules, etc. — whatever your platform expects. Hooks fire on Claude Code only (full 9-event lifecycle as of v2.4 + AIDefence injection at UserPromptSubmit as of v2.5); on every other platform the agent self-polices via the `superagent-safety` skill.
 
 **What happens if my local model crashes mid-task?** Canary preflight (3-step Read → Edit → Bash test) refuses to switch if the model fails. Once switched, the auto-fallback policy on canary failure is "freeze + prompt" — you decide whether to retry, pick a different model, or restore Anthropic.
 
@@ -371,7 +386,7 @@ python3 bin/superagent-compile --platform all
 
 ```
 SuperAgent/
-├── skills/                  23 skills (source of truth)
+├── skills/                  26 skills (source of truth)
 ├── agents/                  Claude agent files (with frontmatter hooks)
 ├── bin/                     CLIs (classify, compile, switch, chain, cost,
 │                            learn, oneshot, ship)

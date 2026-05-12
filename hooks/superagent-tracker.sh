@@ -58,6 +58,62 @@ emit_cost_record() {
   } >> "$cost_file" 2>/dev/null || true
 }
 
+# Wave 2: emit span + token-usage metric via bin/superagent-obs (best effort).
+emit_obs_records() {
+  local payload="$1"
+  local tool_name="$2"
+
+  local obs_bin
+  obs_bin="$(command -v superagent-obs 2>/dev/null || true)"
+  if [[ -z "$obs_bin" ]]; then
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -x "$script_dir/../bin/superagent-obs" ]]; then
+      obs_bin="$script_dir/../bin/superagent-obs"
+    fi
+  fi
+  [[ -z "$obs_bin" ]] && return 0
+
+  local trace_id="${SA_TRACE_ID:-}"
+  if [[ -z "$trace_id" ]]; then
+    trace_id="t-$(printf '%s%s' "$(date +%s%N 2>/dev/null || date +%s)" "$tool_name" \
+      | (shasum -a 256 2>/dev/null || sha256sum 2>/dev/null) | cut -c1-8)"
+  fi
+  local span_id
+  span_id="s-$(printf '%s%s%s' "$(date +%s%N 2>/dev/null || date +%s)" "$tool_name" "$$" \
+    | (shasum -a 256 2>/dev/null || sha256sum 2>/dev/null) | cut -c1-8)"
+
+  local end_ms start_ms
+  end_ms=$(python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null || echo 0)
+  start_ms=$((end_ms - 1))
+
+  if [[ -n "${SA_PARENT_SPAN:-}" ]]; then
+    "$obs_bin" span \
+      --trace "$trace_id" --span "$span_id" --parent "$SA_PARENT_SPAN" \
+      --op "tool.$tool_name" --start "$start_ms" --end "$end_ms" --status OK \
+      --attrs "{\"tool\":\"$tool_name\"}" 2>/dev/null || true
+  else
+    "$obs_bin" span \
+      --trace "$trace_id" --span "$span_id" \
+      --op "tool.$tool_name" --start "$start_ms" --end "$end_ms" --status OK \
+      --attrs "{\"tool\":\"$tool_name\"}" 2>/dev/null || true
+  fi
+
+  local total_tok
+  total_tok=$(jq -r '
+    (.tool_response.usage.input_tokens // 0) +
+    (.tool_response.usage.output_tokens // 0) +
+    (.tool_response.usage.cache_creation_input_tokens // 0) +
+    (.tool_response.usage.cache_read_input_tokens // 0)' \
+    <<<"$payload" 2>/dev/null || echo 0)
+  [[ -z "$total_tok" ]] && total_tok=0
+
+  "$obs_bin" metric \
+    --name agent_token_usage --kind histogram \
+    --value "$total_tok" \
+    --labels "{\"tool\":\"$tool_name\",\"model\":\"${CLAUDE_MODEL:-unknown}\"}" 2>/dev/null || true
+}
+
 init_stats() {
   if [[ ! -f "$STATS" ]]; then
     echo '{"version":1,"projects":{}}' > "$STATS"
@@ -141,6 +197,7 @@ if [[ "$TOOL_NAME" != "Bash" ]]; then
   RESP_BYTES=$(echo "$PAYLOAD" | jq -r '(.tool_response | tostring) | length' 2>/dev/null || echo 0)
   SYN_TOKENS=$(( ${RESP_BYTES:-0} / 4 ))
   emit_cost_record "$PAYLOAD" "$TOOL_NAME" "${PWD:-unknown}" "$SYN_TOKENS"
+  emit_obs_records "$PAYLOAD" "$TOOL_NAME"
   exit 0
 fi
 
@@ -230,5 +287,6 @@ jq --arg project  "$PROJECT" \
 
 # Per-call cost log (Wave 1 v2 schema)
 emit_cost_record "$PAYLOAD" "$TOOL_NAME" "${PROJECT:-unknown}" "${RESPONSE_TOKENS:-0}"
+emit_obs_records "$PAYLOAD" "$TOOL_NAME"
 
 exit 0

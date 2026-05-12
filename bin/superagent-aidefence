@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# superagent-aidefence — per-prompt injection + PII scanner (Wave 2).
+# Subcommands: scan <text> | enable | disable | status | list [--json] | feedback <id> <accurate|inaccurate>
+set -euo pipefail
+
+ROOT="$HOME/.superagent/aidefence"
+PATTERNS="$ROOT/patterns.json"
+LEARNED="$ROOT/learned.jsonl"
+ENABLED_FLAG="$ROOT/enabled"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEFAULT_PATTERNS="$SCRIPT_DIR/../skills/aidefence/patterns.json"
+
+mkdir -p "$ROOT" 2>/dev/null || true
+if [[ ! -f "$PATTERNS" && -f "$DEFAULT_PATTERNS" ]]; then
+  cp "$DEFAULT_PATTERNS" "$PATTERNS"
+fi
+[[ -f "$LEARNED" ]] || : > "$LEARNED"
+
+usage() {
+  cat <<EOF
+Usage: superagent-aidefence <subcommand> [args]
+
+Subcommands:
+  scan <text>                          Scan text; emit JSON {safe, threats, piiFound, detectionTimeMs}.
+  enable                               Drop the enabled flag so the prompt-submit hook calls scan.
+  disable                              Remove the enabled flag.
+  status                               Print enabled state, pattern count, recent learnings.
+  list [--json]                        List shipped patterns.
+  feedback <id> <accurate|inaccurate>  Record EMA update for adaptive learning.
+EOF
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  -h|--help|"") usage; exit 0 ;;
+
+  enable)
+    : > "$ENABLED_FLAG"
+    echo "aidefence: enabled"
+    ;;
+
+  disable)
+    rm -f "$ENABLED_FLAG" 2>/dev/null || true
+    echo "aidefence: disabled"
+    ;;
+
+  status)
+    if [[ -f "$ENABLED_FLAG" ]]; then echo "enabled: yes"; else echo "enabled: no"; fi
+    PAT_COUNT=$(jq '.patterns | length' "$PATTERNS" 2>/dev/null || echo 0)
+    echo "patterns: $PAT_COUNT"
+    echo "learned events: $(wc -l < "$LEARNED" 2>/dev/null | tr -d ' ' || echo 0)"
+    ;;
+
+  list)
+    if [[ "${2:-}" == "--json" ]]; then
+      jq -c '.patterns' "$PATTERNS"
+    else
+      jq -r '.patterns[] | "\(.id)\t\(.severity)\t\(.type)\t\(.description)"' "$PATTERNS" \
+        | column -t -s $'\t'
+    fi
+    ;;
+
+  feedback)
+    pid="${2:-}"
+    verdict="${3:-}"
+    if [[ -z "$pid" || -z "$verdict" ]]; then
+      echo "Usage: superagent-aidefence feedback <pattern-id> <accurate|inaccurate>" >&2
+      exit 1
+    fi
+    case "$verdict" in
+      accurate)   was=true ;;
+      inaccurate) was=false ;;
+      *) echo "verdict must be 'accurate' or 'inaccurate'" >&2; exit 1 ;;
+    esac
+    TS=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)
+    printf '{"pattern_id":"%s","was_accurate":%s,"ts":"%s"}\n' "$pid" "$was" "$TS" >> "$LEARNED"
+    echo "feedback recorded for $pid"
+    ;;
+
+  scan)
+    shift
+    text="$*"
+    if [[ -z "$text" ]]; then
+      echo '{"safe":true,"threats":[],"piiFound":false,"detectionTimeMs":0,"inputHash":""}'
+      exit 0
+    fi
+
+    PATTERNS="$PATTERNS" LEARNED="$LEARNED" python3 - "$text" <<'PY'
+import json, sys, re, hashlib, time, os
+
+patterns_path = os.environ["PATTERNS"]
+learned_path  = os.environ["LEARNED"]
+text = sys.argv[1]
+
+stripped = text.strip()
+if stripped.startswith('```') or stripped.startswith('// quote:'):
+    print(json.dumps({
+        "safe": True, "threats": [], "piiFound": False,
+        "detectionTimeMs": 0.0,
+        "inputHash": hashlib.sha256(text.encode()).hexdigest()[:16],
+        "skipped": "escape-hatch",
+    }))
+    sys.exit(0)
+
+with open(patterns_path) as f:
+    data = json.load(f)
+
+eff = {}
+if os.path.exists(learned_path):
+    for line in open(learned_path):
+        try:
+            r = json.loads(line.strip())
+        except Exception:
+            continue
+        pid = r.get('pattern_id'); was = r.get('was_accurate')
+        if pid is None or was is None:
+            continue
+        prev = eff.get(pid, 0.8)
+        eff[pid] = 0.1 * (1 if was else 0) + 0.9 * prev
+
+t0 = time.perf_counter()
+threats = []
+pii_found = False
+for pat in data.get('patterns', []):
+    try:
+        rx = re.compile(pat['regex'], re.IGNORECASE)
+    except re.error:
+        continue
+    m = rx.search(text)
+    if not m:
+        continue
+    t = pat.get('type', 'unknown')
+    confidence = pat.get('baseConfidence', 0.5) * eff.get(pat['id'], 1.0)
+    if t.startswith('pii_'):
+        pii_found = True
+        continue
+    threats.append({
+        "id": pat['id'],
+        "type": t,
+        "severity": pat.get('severity', 'medium'),
+        "confidence": round(confidence, 4),
+        "location": {"start": m.start(), "end": m.end()},
+    })
+
+elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+unsafe = any(t['severity'] in ('critical', 'high') for t in threats)
+
+print(json.dumps({
+    "safe": not unsafe,
+    "threats": threats,
+    "piiFound": pii_found,
+    "detectionTimeMs": elapsed_ms,
+    "inputHash": hashlib.sha256(text.encode()).hexdigest()[:16],
+}))
+PY
+    ;;
+
+  *)
+    echo "unknown subcommand: $cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

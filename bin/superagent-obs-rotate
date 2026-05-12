@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# superagent-obs-rotate — daily rotate spans.jsonl + metrics.jsonl, prune > 30 days.
+set -euo pipefail
+ROOT="$HOME/.superagent/obs"
+SPANS="$ROOT/spans.jsonl"
+METRICS="$ROOT/metrics.jsonl"
+
+mkdir -p "$ROOT" 2>/dev/null || true
+
+TODAY=$(date +%Y%m%d)
+MARKER="$ROOT/.last-rotate-$TODAY"
+
+# Already rotated today? Skip.
+if [[ -f "$MARKER" ]]; then
+  exit 0
+fi
+
+rotate_one() {
+  local src="$1"
+  local stem="${src%.jsonl}"
+  if [[ -s "$src" ]]; then
+    mv "$src" "$stem.$TODAY.jsonl"
+    : > "$src"
+  fi
+}
+
+rotate_one "$SPANS"
+rotate_one "$METRICS"
+
+# Prune > 30 days
+find "$ROOT" -maxdepth 1 -type f \( -name 'spans.*.jsonl' -o -name 'metrics.*.jsonl' \) -mtime +30 -delete 2>/dev/null || true
+
+# Cleanup yesterday's marker if it exists
+find "$ROOT" -maxdepth 1 -type f -name '.last-rotate-*' ! -name ".last-rotate-$TODAY" -delete 2>/dev/null || true
+
+# Drop today's marker
+: > "$MARKER"

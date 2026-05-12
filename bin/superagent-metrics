@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# superagent-metrics [today|week|all] [--json] — aggregate counter/gauge/histogram + anomaly flag.
+set -euo pipefail
+METRICS="$HOME/.superagent/obs/metrics.jsonl"
+RANGE="today"
+JSON_MODE=0
+for arg in "$@"; do
+  case "$arg" in
+    --json)            JSON_MODE=1 ;;
+    today|week|all)    RANGE="$arg" ;;
+    *)                 RANGE="$arg" ;;
+  esac
+done
+
+if [[ ! -f "$METRICS" ]]; then
+  if [[ "$JSON_MODE" -eq 1 ]]; then echo '{}'; else echo "no metrics file at $METRICS" >&2; fi
+  exit 0
+fi
+
+METRICS="$METRICS" RANGE="$RANGE" JSON_MODE="$JSON_MODE" python3 <<'PY'
+import json, os, datetime
+from collections import defaultdict
+
+path = os.environ["METRICS"]
+rng = os.environ["RANGE"]
+json_mode = os.environ["JSON_MODE"] == "1"
+
+now = datetime.datetime.now(datetime.timezone.utc)
+cutoff = {
+  'today': now.replace(hour=0, minute=0, second=0, microsecond=0),
+  'week':  now - datetime.timedelta(days=7),
+  'all':   datetime.datetime.min.replace(tzinfo=datetime.timezone.utc),
+}.get(rng)
+if cutoff is None:
+  raise SystemExit(f"unknown range: {rng}")
+
+values_by_name = defaultdict(list)
+kinds = {}
+all_values_by_name = defaultdict(list)   # for anomaly detection (last 100)
+
+records = []
+for line in open(path):
+    line = line.strip()
+    if not line: continue
+    try:
+        r = json.loads(line)
+        records.append(r)
+    except Exception:
+        continue
+
+for idx, r in enumerate(records):
+    name = r.get("name", "?")
+    val = float(r.get("value", 0))
+    all_values_by_name[name].append(val)
+    try:
+        ts = datetime.datetime.fromisoformat(r.get("ts", ""))
+    except Exception:
+        continue
+    if ts < cutoff:
+        continue
+    values_by_name[name].append((ts, idx, val))
+    kinds[name] = r.get("kind", "counter")
+
+# Anomaly: rolling mean + 2σ over last 100 values
+def anomaly_flag(name):
+    vs = all_values_by_name[name][-100:]
+    if len(vs) < 5:
+        return None
+    mean = sum(vs) / len(vs)
+    var = sum((v - mean) ** 2 for v in vs) / len(vs)
+    sd = var ** 0.5
+    last = vs[-1]
+    if sd > 0 and last > mean + 2 * sd:
+        return f"anomaly (last {last:.2f} > mean {mean:.2f} + 2σ {sd*2:.2f})"
+    return None
+
+def pctile(vs, p):
+    if not vs: return 0
+    s = sorted(vs)
+    idx = min(len(s) - 1, int(len(s) * p))
+    return s[idx]
+
+agg = {}
+for name, pairs in values_by_name.items():
+    vs = [v for _, _, v in pairs]
+    kind = kinds.get(name, "counter")
+    if kind == "counter":
+        agg[name] = {"kind": kind, "sum": sum(vs), "count": len(vs)}
+    elif kind == "gauge":
+        last_ts, _, last_v = max(pairs, key=lambda p: (p[0], p[1]))
+        agg[name] = {"kind": kind, "last": last_v, "count": len(vs)}
+    elif kind == "histogram":
+        agg[name] = {
+            "kind": kind,
+            "count": len(vs),
+            "p50": pctile(vs, 0.5),
+            "p95": pctile(vs, 0.95),
+            "p99": pctile(vs, 0.99),
+            "min": min(vs), "max": max(vs),
+            "mean": sum(vs) / len(vs) if vs else 0,
+        }
+
+# Add anomaly flags
+for name in agg:
+    a = anomaly_flag(name)
+    if a:
+        agg[name]["anomaly"] = a
+
+if json_mode:
+    print(json.dumps({"range": rng, "metrics": agg}))
+    raise SystemExit(0)
+
+if not agg:
+    print(f"no metrics in range: {rng}")
+    raise SystemExit(0)
+
+print(f"{'name':36} {'kind':10} {'value/p50':>12}  details")
+print('-' * 90)
+for name in sorted(agg):
+    a = agg[name]
+    if a["kind"] == "counter":
+        details = f"sum={a['sum']:.2f}  count={a['count']}"
+        v = a["sum"]
+    elif a["kind"] == "gauge":
+        details = f"count={a['count']}"
+        v = a["last"]
+    else:
+        details = f"p50={a['p50']:.2f} p95={a['p95']:.2f} p99={a['p99']:.2f} (n={a['count']})"
+        v = a["p50"]
+    print(f"{name:36} {a['kind']:10} {v:>12.2f}  {details}")
+    if "anomaly" in a:
+        print(f"{'':36} {'':10} {'':>12}  ⚠ {a['anomaly']}")
+PY

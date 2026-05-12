@@ -4,13 +4,13 @@
 {"id": 3, "prompt": "build a 3D hero section with scroll-triggered camera", "archetype": "webgl", "expected_chain": ["mempalace-wake", "webgl-craft", "writing-plans", "verification-before-completion"]}
 # id=3: webgl rule now includes writing-plans; ui-ux-pro-max removed from webgl chain (no ui keyword in prompt).
 {"id": 4, "prompt": "ship this branch", "archetype": "release", "expected_chain": ["mempalace-wake", "review", "ship"]}
-{"id": 5, "prompt": "review my PR for SQL injection and trust boundary issues", "archetype": "review", "expected_chain": ["mempalace-wake", "review", "simplify", "cso", "security-review"]}
+{"id": 5, "prompt": "review my PR for SQL injection and trust boundary issues", "archetype": "review", "expected_chain": ["mempalace-wake", "review", "simplify", "cso", "security-review", "agent:reviewer"]}
 # id=5: 'pr|pull request' removed from release signal (PR review != ship). review+security both fire correctly.
 {"id": 6, "prompt": "how does the auth flow work in this repo", "archetype": "explore", "expected_chain": ["mempalace-wake", "graphify-query", "smart-explore"]}
 {"id": 7, "prompt": "why are builds failing on main", "archetype": "investigate", "expected_chain": ["mempalace-wake", "investigate", "mem-search"]}
 # id=7: 'failing' removed from bug signal (investigate territory). investigate signal now matches 'why are'.
 {"id": 8, "prompt": "plan how we migrate from REST to GraphQL", "archetype": "plan", "expected_chain": ["mempalace-wake", "brainstorming", "writing-plans", "plan-ceo-review", "plan-eng-review"]}
-{"id": 9, "prompt": "refactor the billing module to use the new pricing API and also write the migration doc", "archetype": "parallel", "expected_chain": ["mempalace-wake", "simplify", "dispatching-parallel-agents", "verification-before-completion"]}
+{"id": 9, "prompt": "refactor the billing module to use the new pricing API and also write the migration doc", "archetype": "parallel", "expected_chain": ["mempalace-wake", "simplify", "dispatching-parallel-agents", "agent:coder", "verification-before-completion"]}
 # id=9: 'refactor' correctly fires refactor rule (simplify). Parallel fires too. vbc appended (refactor is build archetype).
 {"id": 10, "prompt": "redesign the landing page", "archetype": "design", "expected_chain": ["mempalace-wake", "brainstorming", "ui-ux-pro-max", "verification-before-completion"]}
 # id=10: 'redesign' added to ui signal. ui chain now has brainstorming. plan-design-review removed from ui chain.
@@ -26,7 +26,7 @@
 {"id": 17, "prompt": "clean up the duplicated validation code", "archetype": "refactor", "expected_chain": ["mempalace-wake", "simplify", "verification-before-completion"]}
 {"id": 18, "prompt": "write a plan for the new billing system", "archetype": "plan", "expected_chain": ["mempalace-wake", "brainstorming", "writing-plans", "plan-ceo-review", "plan-eng-review"]}
 {"id": 19, "prompt": "prepare this repo for a release and push the tag", "archetype": "release", "expected_chain": ["mempalace-wake", "review", "ship"]}
-{"id": 20, "prompt": "debug the test that's flaky on CI", "archetype": "bug", "expected_chain": ["mempalace-wake", "systematic-debugging", "test-driven-development", "verification-before-completion"]}
+{"id": 20, "prompt": "debug the test that's flaky on CI", "archetype": "bug", "expected_chain": ["mempalace-wake", "systematic-debugging", "test-driven-development", "agent:coder", "verification-before-completion"]}
 # id=20: 'debug' added to bug signal. bug rule fires -> [sys-dbg, tdd] + vbc (build archetype).
 {"id": 21, "prompt": "switch to qwen3-coder:next", "archetype": "switch", "expected_chain": ["mempalace-wake", "superagent-switch"]}
 # id=21: new switch rule routes direct CLI ops (switch/list/canary/auto) to the dedicated superagent-switch skill.
@@ -42,3 +42,9 @@
 {"id": 29, "prompt": "promote this routing pattern so we don't have to rediscover it next time", "archetype": "learning", "expected_chain": ["mempalace-wake", "superagent-learn-loop", "learn"]}
 {"id": 30, "prompt": "auto-approve git push --force-with-lease in this repo", "archetype": "permission", "expected_chain": ["mempalace-wake", "superagent-safety"]}
 {"id": 31, "prompt": "downgrade to sonnet when we hit 90% of daily plan", "archetype": "cost", "expected_chain": ["mempalace-wake", "auto-fallback", "cost-budget"]}
+{"id": 32, "prompt": "threat-model the auth flow for the new tenant API", "archetype": "security", "expected_chain": ["mempalace-wake", "agent:security-architect"]}
+{"id": 33, "prompt": "show me the trace for the last classifier route", "archetype": "obs", "expected_chain": ["mempalace-wake", "observability"]}
+{"id": 34, "prompt": "scan this prompt for injection attempts", "archetype": "aidefence", "expected_chain": ["mempalace-wake", "cso", "security-review", "aidefence"]}
+{"id": 35, "prompt": "run autopilot on the open todo list and stop when done", "archetype": "autopilot", "expected_chain": ["mempalace-wake", "autopilot"]}
+{"id": 36, "prompt": "p95 latency for agent_token_usage this week", "archetype": "obs", "expected_chain": ["mempalace-wake", "observability"]}
+{"id": 37, "prompt": "design the API for the comments service", "archetype": "architect", "expected_chain": ["mempalace-wake", "brainstorming", "ui-ux-pro-max", "agent:architect", "verification-before-completion"]}

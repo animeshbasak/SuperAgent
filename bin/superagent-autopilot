@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# superagent-autopilot — /loop + pattern-driven prediction with budget gate (Wave 2 §7.4).
+# Subcommands: enable | disable | status [--json] | config <flag> <value> | tasks [--json]
+#              | predict [--json] | iter | _record-iter --completed N --total M
+set -euo pipefail
+
+ROOT="$HOME/.superagent/autopilot"
+STATE="$ROOT/state.json"
+mkdir -p "$ROOT" 2>/dev/null || true
+
+ensure_state() {
+  if [[ ! -f "$STATE" ]]; then
+    cat > "$STATE" <<'JSON'
+{
+  "sessionId": "",
+  "enabled": false,
+  "startTime": 0,
+  "iterations": 0,
+  "maxIterations": 50,
+  "timeoutMinutes": 240,
+  "taskSources": ["markdown-checkboxes","routes-halt","tasks-md"],
+  "lastCheck": 0,
+  "history": []
+}
+JSON
+  fi
+}
+ensure_state
+
+usage() {
+  cat <<EOF
+Usage: superagent-autopilot <subcommand> [args]
+
+Subcommands:
+  enable                              Flip enabled flag, set startTime.
+  disable                             Clear enabled flag.
+  status [--json]                     Print state (table or JSON).
+  config <flag> <value>               Set --max-iterations [1,1000] or --timeout-minutes [1,1440].
+  tasks [--json]                      Discover pending tasks (3 sources).
+  predict [--json]                    Predict next action using ~/.superagent/brain/patterns.jsonl.
+  iter                                Run one iteration: budget gate, predict, emit wakeup directive.
+  _record-iter --completed N --total M (private: bump iterations + history)
+EOF
+}
+
+now_ms() { python3 -c "import time; print(int(time.time()*1000))"; }
+
+cmd="${1:-}"
+case "$cmd" in
+  -h|--help|"") usage; exit 0 ;;
+
+  enable)
+    TS=$(now_ms)
+    python3 - "$STATE" "$TS" <<'PY'
+import json, sys
+path, ts = sys.argv[1], int(sys.argv[2])
+s = json.load(open(path))
+s['enabled'] = True
+s['startTime'] = ts
+json.dump(s, open(path,'w'), indent=2)
+PY
+    echo "autopilot: enabled"
+    ;;
+
+  disable)
+    python3 - "$STATE" <<'PY'
+import json, sys
+path = sys.argv[1]
+s = json.load(open(path))
+s['enabled'] = False
+json.dump(s, open(path,'w'), indent=2)
+PY
+    echo "autopilot: disabled"
+    ;;
+
+  status)
+    if [[ "${2:-}" == "--json" ]]; then
+      cat "$STATE"
+    else
+      python3 - "$STATE" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1]))
+print(f"enabled: {str(s.get('enabled')).lower()}")
+print(f"iterations: {s.get('iterations',0)} / {s.get('maxIterations',50)}")
+print(f"timeoutMinutes: {s.get('timeoutMinutes',240)}")
+print(f"taskSources: {', '.join(s.get('taskSources',[]))}")
+print(f"history: {len(s.get('history',[]))} entries")
+PY
+    fi
+    ;;
+
+  config)
+    flag="${2:-}"
+    value="${3:-}"
+    if [[ -z "$flag" || -z "$value" ]]; then
+      echo "Usage: superagent-autopilot config <--max-iterations|--timeout-minutes> <value>" >&2; exit 1
+    fi
+    python3 - "$STATE" "$flag" "$value" <<'PY'
+import json, sys
+path, flag, value = sys.argv[1], sys.argv[2], sys.argv[3]
+s = json.load(open(path))
+try:
+    v = int(value)
+except ValueError:
+    sys.stderr.write("value must be int\n"); sys.exit(2)
+if flag in ("--max-iterations","maxIterations"):
+    s['maxIterations'] = max(1, min(1000, v))
+elif flag in ("--timeout-minutes","timeoutMinutes"):
+    s['timeoutMinutes'] = max(1, min(1440, v))
+else:
+    sys.stderr.write(f"unknown flag: {flag}\n"); sys.exit(2)
+json.dump(s, open(path,'w'), indent=2)
+PY
+    ;;
+
+  tasks)
+    json_mode=0
+    [[ "${2:-}" == "--json" ]] && json_mode=1
+    python3 - "$STATE" "$PWD" "$HOME" "$json_mode" <<'PY'
+import json, os, re, sys, glob
+state_path, cwd, home, jm = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "1"
+pending = []
+
+# 1. markdown checkboxes under cwd
+for path in glob.glob(os.path.join(cwd, "**", "*.md"), recursive=True):
+    try:
+        with open(path) as f:
+            for i, line in enumerate(f, 1):
+                if re.match(r"^\s*[-*]\s*\[ \]\s+", line):
+                    pending.append({"source":"markdown-checkboxes","file":path,"line":i,"text":line.strip()})
+    except Exception:
+        continue
+
+# 2. routes.jsonl halts
+routes = os.path.join(home, ".superagent", "brain", "routes.jsonl")
+if os.path.exists(routes):
+    for line in open(routes):
+        try:
+            r = json.loads(line.strip())
+        except Exception:
+            continue
+        if r.get("outcome") == "halt":
+            pending.append({"source":"routes-halt","task":r.get("task",""),"task_hash":r.get("task_hash","")})
+
+# 3. tasks.md in cwd
+tasks_md = os.path.join(cwd, "tasks.md")
+if os.path.exists(tasks_md):
+    with open(tasks_md) as f:
+        for i, line in enumerate(f, 1):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                pending.append({"source":"tasks-md","file":tasks_md,"line":i,"text":line})
+
+if jm:
+    print(json.dumps({"pending": pending, "count": len(pending)}))
+else:
+    print(f"pending tasks: {len(pending)}")
+    for p in pending[:20]:
+        src = p.get("source")
+        text = p.get("text") or p.get("task","")
+        print(f"  [{src}] {text[:100]}")
+PY
+    ;;
+
+  predict)
+    json_mode=0
+    [[ "${2:-}" == "--json" ]] && json_mode=1
+    python3 - "$HOME" "$PWD" "$json_mode" <<'PY'
+import json, os, re, sys, glob
+home, cwd, jm = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+
+# Reuse the tasks discovery inline
+pending = []
+for path in glob.glob(os.path.join(cwd, "**", "*.md"), recursive=True):
+    try:
+        with open(path) as f:
+            for i, line in enumerate(f, 1):
+                if re.match(r"^\s*[-*]\s*\[ \]\s+", line):
+                    pending.append(re.sub(r"^\s*[-*]\s*\[ \]\s*", "", line).strip())
+    except Exception:
+        continue
+tasks_md = os.path.join(cwd, "tasks.md")
+if os.path.exists(tasks_md):
+    for line in open(tasks_md):
+        line = line.strip()
+        if line and not line.startswith("#"):
+            pending.append(line)
+
+patterns_path = os.path.join(home, ".superagent", "brain", "patterns.jsonl")
+patterns = []
+if os.path.exists(patterns_path):
+    for line in open(patterns_path):
+        try:
+            patterns.append(json.loads(line.strip()))
+        except Exception:
+            continue
+
+def tokens(s):
+    return set(re.findall(r"[a-z0-9]+", (s or "").lower()))
+
+best = {"score": 0.0, "task": None, "pattern": None}
+for task in pending:
+    t = tokens(task)
+    for p in patterns:
+        sig = tokens(p.get("signal",""))
+        if not sig: continue
+        overlap = len(t & sig)
+        if overlap == 0: continue
+        sr = float(p.get("successRate", 0))
+        score = overlap * sr
+        if score > best["score"]:
+            best = {"score": score, "task": task, "pattern": p}
+
+if best["pattern"] and best["pattern"].get("successRate", 0) > 0.7:
+    out = {"action":"execute-pattern", "confidence": best["pattern"]["successRate"],
+           "target": best["task"], "chain": best["pattern"].get("chain",[])}
+elif pending:
+    out = {"action":"fallback", "confidence": 0, "target": pending[0]}
+else:
+    out = {"action":"idle", "confidence": 0, "target": None}
+
+if jm:
+    print(json.dumps(out))
+else:
+    print(f"action: {out['action']}  confidence: {out['confidence']}  target: {out.get('target','-')}")
+PY
+    ;;
+
+  iter)
+    # Budget gate first
+    if [[ -f "$HOME/.superagent/auto-downgrade.flag" ]]; then
+      echo '{"paused":true,"reason":"budget"}'
+      exit 0
+    fi
+    # Enabled check
+    ENABLED=$(jq -r '.enabled' "$STATE")
+    if [[ "$ENABLED" != "true" ]]; then
+      echo '{"paused":true,"reason":"disabled"}'
+      exit 0
+    fi
+    # Run predict
+    PRED=$(HOME="$HOME" "$0" predict --json)
+    DELAY="${SUPERAGENT_CACHE_TTL_S:-270}"
+    # Bump iteration count
+    python3 - "$STATE" <<'PY'
+import json, sys
+path = sys.argv[1]
+s = json.load(open(path))
+s['iterations'] = int(s.get('iterations',0)) + 1
+json.dump(s, open(path,'w'), indent=2)
+PY
+    ITER=$(jq -r '.iterations' "$STATE")
+    # Emit a wakeup directive — parent skill is responsible for the actual ScheduleWakeup call
+    jq -nc \
+      --argjson pred "$PRED" --argjson delay "$DELAY" --argjson iter "$ITER" \
+      '{paused:false, predict:$pred, directive:"ScheduleWakeup", delaySeconds:$delay, reason:("autopilot iter "+($iter|tostring))}'
+    ;;
+
+  _record-iter)
+    completed=0; total=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --completed) completed="$2"; shift 2 ;;
+        --total)     total="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    TS=$(now_ms)
+    python3 - "$STATE" "$TS" "$completed" "$total" <<'PY'
+import json, sys
+path, ts, completed, total = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+s = json.load(open(path))
+s['iterations'] = int(s.get('iterations',0)) + 1
+hist = s.get('history') or []
+hist.insert(0, {"ts": ts, "iteration": s['iterations'], "completed": completed, "total": total})
+s['history'] = hist[:50]
+s['lastCheck'] = ts
+json.dump(s, open(path,'w'), indent=2)
+PY
+    ;;
+
+  *)
+    echo "unknown subcommand: $cmd" >&2; usage >&2; exit 2
+    ;;
+esac

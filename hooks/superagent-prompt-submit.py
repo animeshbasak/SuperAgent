@@ -59,6 +59,46 @@ def main():
         except Exception:
             pass
 
+    # ── AIDefence (Wave 2) ──────────────────────────────────────────────────────
+    aidefence_enabled = os.path.exists(
+        os.path.expanduser("~/.superagent/aidefence/enabled")
+    )
+    if aidefence_enabled:
+        aidefence_bin = shutil.which("superagent-aidefence") or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "bin", "superagent-aidefence"
+        )
+        aidefence_bin = os.path.abspath(aidefence_bin)
+        try:
+            r = subprocess.run(
+                [aidefence_bin, "scan", prompt],
+                capture_output=True, text=True, timeout=2,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                verdict = json.loads(r.stdout)
+                critical = any(t.get("severity") == "critical" for t in verdict.get("threats", []))
+                high = any(t.get("severity") == "high" for t in verdict.get("threats", []))
+                if critical:
+                    _emit({
+                        "decision": "deny",
+                        "hookSpecificOutput": {
+                            "hookEventName": "UserPromptSubmit",
+                            "additionalContext": "AIDefence: critical threat detected — request blocked.",
+                        },
+                        "stopReason": "aidefence-critical",
+                    })
+                    return 0
+                if high:
+                    _emit({
+                        "decision": "ask",
+                        "hookSpecificOutput": {
+                            "hookEventName": "UserPromptSubmit",
+                            "additionalContext": "AIDefence: high-severity threat — confirm before proceeding.",
+                        },
+                    })
+                    return 0
+        except Exception:
+            pass
+
     lines = [
         "## SuperAgent route",
         f"Complexity: {complexity}" + (f"  Categories: {', '.join(categories)}" if categories else ""),

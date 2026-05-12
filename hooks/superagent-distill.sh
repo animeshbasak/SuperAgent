@@ -23,6 +23,15 @@ if [[ -n "$PATBIN" ]]; then
   "$PATBIN" decay   >/dev/null 2>&1 || true
 fi
 
+# ── Wave 2: observability daily rotation (idempotent per-day marker) ──────────
+ROTATE_BIN=""
+if command -v superagent-obs-rotate >/dev/null 2>&1; then
+  ROTATE_BIN="$(command -v superagent-obs-rotate)"
+elif [[ -x "$(dirname "${BASH_SOURCE[0]}")/../bin/superagent-obs-rotate" ]]; then
+  ROTATE_BIN="$(dirname "${BASH_SOURCE[0]}")/../bin/superagent-obs-rotate"
+fi
+[[ -n "$ROTATE_BIN" ]] && "$ROTATE_BIN" >/dev/null 2>&1 || true
+
 TRANSCRIPT=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // empty' 2>/dev/null || echo "")
 [[ -n "$TRANSCRIPT" && -f "$TRANSCRIPT" ]] || exit 0
 

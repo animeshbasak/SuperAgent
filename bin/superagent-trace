@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# superagent-trace <traceId> — read ~/.superagent/obs/spans.jsonl, build tree, ASCII print with p95 bottleneck flag.
+set -euo pipefail
+SPANS="$HOME/.superagent/obs/spans.jsonl"
+TRACE="${1:-}"
+[[ -z "$TRACE" ]] && { echo "Usage: superagent-trace <traceId>" >&2; exit 1; }
+[[ -f "$SPANS" ]] || { echo "no spans file at $SPANS" >&2; exit 1; }
+
+SPANS="$SPANS" TRACE="$TRACE" python3 <<'PY'
+import json, os
+from collections import defaultdict
+path = os.environ["SPANS"]
+trace_id = os.environ["TRACE"]
+
+all_spans = []
+with open(path) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            all_spans.append(json.loads(line))
+        except Exception:
+            continue
+
+# p95 per op across the entire spans.jsonl (anomaly baseline)
+durations_by_op = defaultdict(list)
+for s in all_spans:
+    d = max(0, int(s.get("endMs", 0)) - int(s.get("startMs", 0)))
+    durations_by_op[s.get("op", "?")].append(d)
+
+def p95(values):
+    if not values: return 0
+    s = sorted(values)
+    idx = min(len(s) - 1, int(len(s) * 0.95))
+    return s[idx]
+
+p95_by_op = {op: p95(vs) for op, vs in durations_by_op.items()}
+
+# Filter to this trace, build parent-child map
+trace_spans = [s for s in all_spans if s.get("traceId") == trace_id]
+if not trace_spans:
+    print(f"no spans for traceId={trace_id}")
+    raise SystemExit(0)
+
+by_id = {s["spanId"]: s for s in trace_spans}
+children = defaultdict(list)
+for s in trace_spans:
+    children[s.get("parentSpanId")].append(s["spanId"])
+
+# roots = spans whose parentSpanId is null or absent from this trace
+roots = [s["spanId"] for s in trace_spans if not s.get("parentSpanId") or s.get("parentSpanId") not in by_id]
+roots.sort(key=lambda sid: by_id[sid].get("startMs", 0))
+
+def fmt_duration(s):
+    return f"{int(s.get('endMs',0)) - int(s.get('startMs',0))}ms"
+
+def is_bottleneck(s):
+    op = s.get("op", "?")
+    dur = int(s.get("endMs", 0)) - int(s.get("startMs", 0))
+    same_op = durations_by_op[op]
+    if len(same_op) < 2:
+        return False
+    others = [d for d in same_op if d != dur] or same_op
+    mean = sum(others) / len(others)
+    return dur >= p95_by_op.get(op, 0) and dur > mean * 2
+
+def walk(sid, indent, last):
+    s = by_id[sid]
+    connector = "└─" if last else "├─"
+    bottleneck = "  (bottleneck)" if is_bottleneck(s) else ""
+    status = s.get("status", "OK")
+    print(f"{indent}{connector} {s['op']}  [{fmt_duration(s)}]  {status}{bottleneck}")
+    next_indent = indent + ("   " if last else "│  ")
+    kids = sorted(children.get(sid, []), key=lambda k: by_id[k].get("startMs", 0))
+    for i, k in enumerate(kids):
+        walk(k, next_indent, i == len(kids) - 1)
+
+print(f"trace: {trace_id}  ({len(trace_spans)} spans)")
+for i, r in enumerate(roots):
+    walk(r, "", i == len(roots) - 1)
+PY
