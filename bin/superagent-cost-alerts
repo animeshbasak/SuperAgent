@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# superagent-cost-alerts — emit threshold-crossing alerts and drop auto-downgrade.flag.
+# Idempotent: same threshold-tier alert is only appended once per session/day.
+set -euo pipefail
+ROOT="$HOME/.superagent"
+BUDGET="$ROOT/cost/budget.json"
+ALERTS="$ROOT/cost/alerts.jsonl"
+FLAG="$ROOT/auto-downgrade.flag"
+COST_BIN="$(dirname "$0")/superagent-cost"
+
+[[ -f "$BUDGET" ]] || { echo "no budget config (expected $BUDGET)" >&2; exit 0; }
+[[ -x "$COST_BIN" ]] || COST_BIN="superagent-cost"
+
+mkdir -p "$(dirname "$ALERTS")"
+
+DATA=$("$COST_BIN" today --json)
+
+python3 - "$DATA" "$BUDGET" "$ALERTS" "$FLAG" <<'PY'
+import json, sys, os, datetime
+data = json.loads(sys.argv[1])
+budget = json.load(open(sys.argv[2]))
+alerts_path = sys.argv[3]
+flag_path = sys.argv[4]
+
+used = float(data.get('total_usd', 0))
+daily = float(budget.get('daily_usd', 20))
+pct = used / daily if daily > 0 else 0
+thresholds = budget.get('alert_thresholds', [0.5, 0.75, 0.9, 1.0])
+levels = ['info', 'warning', 'critical', 'hard_stop']
+
+crossed_idx = -1
+for i, t in enumerate(thresholds):
+    if pct >= t:
+        crossed_idx = i
+
+if crossed_idx == -1:
+    # Recovered below all thresholds — clear flag if present
+    if os.path.exists(flag_path):
+        try: os.remove(flag_path)
+        except OSError: pass
+    sys.exit(0)
+
+level = levels[crossed_idx] if crossed_idx < len(levels) else f'tier-{crossed_idx}'
+today = datetime.date.today().isoformat()
+
+already_emitted = False
+if os.path.exists(alerts_path):
+    for line in open(alerts_path):
+        try:
+            r = json.loads(line.strip())
+            if r.get('level') == level and r.get('ts', '').startswith(today):
+                already_emitted = True
+                break
+        except Exception:
+            continue
+
+if not already_emitted:
+    rec = {
+        'ts': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        'level': level,
+        'pct': round(pct, 4),
+        'used_usd': round(used, 4),
+        'budget_usd': daily,
+        'action': 'suggest-downgrade' if level in ('warning', 'critical') else ('halt-prompt' if level == 'hard_stop' else 'log'),
+    }
+    with open(alerts_path, 'a') as f:
+        f.write(json.dumps(rec, separators=(',', ':')) + '\n')
+
+ad = budget.get('auto_downgrade', {})
+ad_at = float(ad.get('at', 0.9))
+ad_target = ad.get('target', 'sonnet')
+if pct >= ad_at:
+    with open(flag_path, 'w') as f:
+        f.write(ad_target + '\n')
+elif os.path.exists(flag_path):
+    try: os.remove(flag_path)
+    except OSError: pass
+PY
