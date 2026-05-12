@@ -150,6 +150,25 @@ prevented.
 - If switching breaks Claude Code → `superagent-switch back` restores Anthropic.
 - Backed-up `ANTHROPIC_API_KEY` lives at `~/.superagent/anthropic-key.bak`.
 
+## In-Anthropic tier shift (Wave 1)
+
+In addition to swapping the *backend* (Anthropic ↔ local), the auto-fallback skill now honors **in-tier downgrades** within Anthropic when the cost-tracker drops `~/.superagent/auto-downgrade.flag`.
+
+### Trigger
+
+`bin/superagent-cost-alerts` writes `~/.superagent/auto-downgrade.flag` containing a single token (e.g. `sonnet` or `haiku`) when daily spend crosses the budget's `auto_downgrade.at` threshold (default 0.9).
+
+### Action when flag present
+
+1. Read the flag file: `cat ~/.superagent/auto-downgrade.flag`.
+2. If the current model is **higher tier** than the flag target (Opus → Sonnet, or Sonnet → Haiku), recommend or auto-perform the in-tier shift.
+3. Announce the shift (`Backend: anthropic:<old-tier> → anthropic:<new-tier>  Reason: budget at 90%`).
+4. The flag is cleared automatically by `superagent-cost-alerts` when usage drops below the threshold (e.g. after the 5h reset window).
+
+### Precedence with other guards
+
+When multiple shift signals fire simultaneously, apply in order: **budget > rate-limit > preference**. Budget downgrade beats a user preference for Opus; rate-limit (429) override beats both for the duration of the rate window.
+
 ## Notes
 
 - All state under `~/.superagent/`, never `~/.claude/`.
@@ -388,6 +407,57 @@ If FAIL > 0: per-prompt diagnostics + a ranked list of rules to tune.
 ## Verification
 
 Exit non-zero if avg < 0.90 OR fails > 2 (hard gate thresholds from Task 1.3).
+
+---
+
+### cost-budget
+> Per-day Anthropic budget alerts and auto-downgrade. Reads ~/.superagent/cost/budget.json, emits tiered alerts at 50/75/90/100% of daily budget, and drops auto-downgrade.flag for the auto-fallback skill at 0.9. Use when user says "set budget", "alert me at 90%", "downgrade at threshold", "show today's spend".
+
+# cost-budget
+
+Wave 1 introduced per-task USD attribution and budget enforcement. The existing `token-stats` skill remains for stats; this skill is for *enforcement*.
+
+## When to use
+
+- User asks about today's spend, weekly cost, or budget status.
+- User wants to set or change a daily/monthly budget.
+- User configures auto-downgrade target (e.g. drop to Sonnet at 90%).
+- An alert in `~/.superagent/cost/alerts.jsonl` requires user attention.
+
+## Procedure
+
+1. **Show today's spend with full v2 breakdown:**
+   ```bash
+   superagent-cost today
+   ```
+2. **Run alerts (idempotent, safe to re-run):**
+   ```bash
+   superagent-cost-alerts
+   ```
+3. **Set or update budget:**
+   Edit `~/.superagent/cost/budget.json`:
+   ```json
+   {"daily_usd":20,"monthly_usd":400,
+    "alert_thresholds":[0.5,0.75,0.9,1.0],
+    "auto_downgrade":{"at":0.9,"target":"sonnet"},
+    "hard_stop":{"at":1.0,"mode":"prompt"}}
+   ```
+4. **Inspect recent alerts:**
+   ```bash
+   tail -n 5 ~/.superagent/cost/alerts.jsonl | jq .
+   ```
+
+## Pricing
+
+Default 4-dim pricing table is hardcoded for 2026-Q2 (Haiku/Sonnet/Opus × input/output/cache_write/cache_read). Override at `~/.superagent/cost/pricing.json` for non-standard tiers or custom contracts.
+
+## Auto-downgrade flow
+
+When `daily_usd` consumption ≥ `auto_downgrade.at` (default 0.9), `superagent-cost-alerts` writes `~/.superagent/auto-downgrade.flag` containing the target model. The `auto-fallback` skill reads this flag at routing time and proposes the in-tier shift (Opus→Sonnet, Sonnet→Haiku). The flag clears automatically when usage drops below the threshold.
+
+## Hard stop
+
+At 100% with `hard_stop.mode: prompt` (default), the next route prints a confirmation prompt rather than silently halting. Set `mode: halt` only for unattended workloads.
 
 ---
 
@@ -1691,6 +1761,50 @@ After each skill runs, require the skill's own output. For build/fix chains, the
 
 ---
 
+### superagent-learn-loop
+> SuperAgent learning loop. Promotes recurring done-routes into pattern records, decays stale ones, and feeds them back to the classifier. Use whenever the user wants to teach SuperAgent which chains worked, prune old patterns, or inspect/protect specific routes. Triggers on "promote pattern", "learn this routing", "decay patterns", "list patterns", "protect pattern".
+
+# superagent-learn-loop
+
+The SuperAgent classifier becomes self-improving in v2.4. Every Stop hook runs `superagent-patterns promote` (extracts repeated done-routes into pattern records) and `superagent-patterns decay` (exponentially decays inactive ones). The classifier reads `~/.superagent/brain/patterns.jsonl` and prepends matched chains when `successRate ≥ 0.6` and `useCount ≥ 5`.
+
+## When to use
+
+- User says "remember this pattern" / "promote this route" / "learn this".
+- User wants to inspect, protect, or prune the pattern store.
+- After a session where you discovered a chain that should survive into future sessions.
+
+## Procedure
+
+1. **List current patterns** to ground the user:
+   ```bash
+   superagent-patterns list
+   ```
+2. **Manual promote** if the user wants the latest routes folded in immediately (Stop hook already does this on session end):
+   ```bash
+   superagent-patterns promote
+   ```
+3. **Protect a high-value pattern** so decay won't drop it below 0.3:
+   ```bash
+   superagent-patterns protect p-<id>
+   ```
+4. **Manual prune** to clean noise below a custom threshold:
+   ```bash
+   superagent-patterns prune --below 0.3
+   ```
+
+## Files
+
+- Store: `~/.superagent/brain/patterns.jsonl` (append-only JSONL).
+- Source: `~/.superagent/brain/routes.jsonl` (read by `promote`).
+- Defaults: `~/.superagent/defaults.toml` `[learning]` section.
+
+## Ethos
+
+Memory is compounding interest. Each successful chain that survives the gate becomes a faster route next session. Don't bypass the gate — `successRate ≥ 0.6 + useCount ≥ 5` is what keeps one-off coincidences out of the classifier.
+
+---
+
 ### superagent-safety
 > Reversibility-aware action gate. Universal rule any backend can follow. Triggers BEFORE the agent issues a destructive shell command, force-push, history-rewrite, mass DB mutation, sensitive-file edit, or permission-skip flag. On Claude Code, the hooks/superagent-safety.py PreToolUse hook enforces this same logic at the harness level. Use whenever the request leads toward "rm -rf", "git push --force", "git reset --hard", "DROP", "TRUNCATE", "--no-verify", "--dangerously-skip-permissions", "migrate down", "kill -9", or edits to .env / .ssh / credentials / .pem / .key / /etc.
 
@@ -2005,6 +2119,25 @@ superagent-cost week
 ```
 
 Shows cost grouped by model (opus / sonnet / haiku) and a model-mix coach note.
+
+## One-shot rate
+
+Also surface the routing one-shot rate — the share of tasks the brain routed
+correctly on first try without a retry. Distilled from
+`references/codeburn/src/classifier.ts:120-143` (Edit→Bash→Edit cycle
+detection), adapted to our `routes.jsonl` outcome ledger.
+
+```bash
+superagent-oneshot
+```
+
+Output is `total / oneshot / retried / rate` plus a coaching line. A rate
+above 85% means routing is sharp; under 65% means `rules.yaml` wants tuning.
+For machine-readable use:
+
+```bash
+superagent-oneshot --json
+```
 
 ## Badge Mode
 

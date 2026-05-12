@@ -28,6 +28,18 @@ info() { echo -e "${CYAN}→${NC} $*"; }
 warn() { echo -e "${YELLOW}!${NC} $*"; }
 fail() { echo -e "${RED}✗ $*${NC}" >&2; exit 1; }
 
+# ── Wave 1 migration: v2.3 → v2.4 backup + marker (idempotent) ──────────────
+WAVE1_MARKER="$HOME/.superagent/.wave-1.installed"
+SA_ROOT="$HOME/.superagent"
+mkdir -p "$SA_ROOT/cost" "$SA_ROOT/.backups" 2>/dev/null || true
+
+if [[ ! -f "$WAVE1_MARKER" ]] && [[ -f "$SA_ROOT/cost/calls.jsonl" ]]; then
+  if [[ ! -f "$SA_ROOT/cost/calls.v1.jsonl.bak" ]]; then
+    cp "$SA_ROOT/cost/calls.jsonl" "$SA_ROOT/cost/calls.v1.jsonl.bak"
+    info "v1 calls.jsonl backed up to calls.v1.jsonl.bak (Wave 1 schema upgrade)"
+  fi
+fi
+
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║      Superagent Installer v1.1       ║${NC}"
@@ -306,60 +318,77 @@ else
 fi
 echo ""
 
-# ── Step 9b: Install Python safety + session-start hooks ─────────────────────
-info "Installing PreToolUse safety gate + SessionStart hook..."
+# ── Step 9b: Install 9 SuperAgent hooks (Wave 1: 4 existing + 5 net-new) ─────
+info "Installing 9 SuperAgent hooks (Wave 1 full lifecycle)..."
 
-SAFETY_SRC="$SCRIPT_DIR/hooks/superagent-safety.py"
-SESSION_SRC="$SCRIPT_DIR/hooks/superagent-session-start.py"
+HOOK_NAMES=(
+  "superagent-safety.py"
+  "superagent-session-start.py"
+  "superagent-tracker.sh"
+  "superagent-distill.sh"
+  "superagent-prompt-submit.py"
+  "superagent-subagent-stop.py"
+  "superagent-notification.py"
+  "superagent-permission.py"
+  "superagent-precompact.py"
+)
 
-if [[ -f "$SAFETY_SRC" && -f "$SESSION_SRC" ]]; then
-  cp "$SAFETY_SRC"  "$CLAUDE_DIR/superagent-safety.py"
-  cp "$SESSION_SRC" "$CLAUDE_DIR/superagent-session-start.py"
-  chmod +x "$CLAUDE_DIR/superagent-safety.py" "$CLAUDE_DIR/superagent-session-start.py"
-  ok "Python hooks installed to ~/.claude/"
-
-  if ! command -v python3 >/dev/null 2>&1; then
-    warn "python3 not on PATH — hooks will be inert until installed"
+for name in "${HOOK_NAMES[@]}"; do
+  src="$SCRIPT_DIR/hooks/$name"
+  if [[ -f "$src" ]]; then
+    cp "$src" "$CLAUDE_DIR/$name"
+    chmod +x "$CLAUDE_DIR/$name"
   fi
+done
+ok "Hook scripts copied to $CLAUDE_DIR"
 
-  node - <<'JSEOF'
+if ! command -v python3 >/dev/null 2>&1; then
+  warn "python3 not on PATH — Python hooks will be inert until installed"
+fi
+
+node - <<'JSEOF'
 const fs = require('fs'), path = require('path');
 const file = path.join(process.env.HOME, '.claude', 'settings.json');
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
 cfg.hooks = cfg.hooks || {};
 
-const safetyCmd = `python3 "${path.join(process.env.HOME, '.claude', 'superagent-safety.py')}"`;
-const sessionCmd = `python3 "${path.join(process.env.HOME, '.claude', 'superagent-session-start.py')}"`;
+const wirings = [
+  { event: 'PreToolUse',        matcher: 'Bash|Edit|Write|MultiEdit|NotebookEdit', cmd: 'python3 "$HOME/.claude/superagent-safety.py"' },
+  { event: 'SessionStart',      matcher: '*',                                       cmd: 'python3 "$HOME/.claude/superagent-session-start.py"' },
+  { event: 'UserPromptSubmit',  matcher: '*',                                       cmd: 'python3 "$HOME/.claude/superagent-prompt-submit.py"' },
+  { event: 'SubagentStop',      matcher: '*',                                       cmd: 'python3 "$HOME/.claude/superagent-subagent-stop.py"' },
+  { event: 'Notification',      matcher: '*',                                       cmd: 'python3 "$HOME/.claude/superagent-notification.py"' },
+  { event: 'PermissionRequest', matcher: 'Bash',                                    cmd: 'python3 "$HOME/.claude/superagent-permission.py"' },
+  { event: 'PreCompact',        matcher: '*',                                       cmd: 'python3 "$HOME/.claude/superagent-precompact.py"' },
+];
 
-cfg.hooks.PreToolUse = cfg.hooks.PreToolUse || [];
-const safetyWired = cfg.hooks.PreToolUse.some(h =>
-  h.hooks && h.hooks.some(hh => hh.command && hh.command.includes('superagent-safety'))
-);
-if (!safetyWired) {
-  cfg.hooks.PreToolUse.push({
-    matcher: "Bash|Edit|Write|MultiEdit|NotebookEdit",
-    hooks: [{ type: "command", command: safetyCmd }]
-  });
-}
+const sigOf = (cmd) => {
+  const m = (cmd || '').match(/superagent-[a-z-]+\.(py|sh)/);
+  return m ? m[0] : cmd;
+};
 
-cfg.hooks.SessionStart = cfg.hooks.SessionStart || [];
-const sessionWired = cfg.hooks.SessionStart.some(h =>
-  h.hooks && h.hooks.some(hh => hh.command && hh.command.includes('superagent-session-start'))
-);
-if (!sessionWired) {
-  cfg.hooks.SessionStart.push({
-    matcher: "*",
-    hooks: [{ type: "command", command: sessionCmd }]
-  });
+for (const { event, matcher, cmd } of wirings) {
+  cfg.hooks[event] = cfg.hooks[event] || [];
+  const sig = sigOf(cmd);
+  const already = cfg.hooks[event].some(blk =>
+    (blk.hooks || []).some(h => sigOf(h.command || '') === sig)
+  );
+  if (!already) {
+    cfg.hooks[event].push({
+      matcher,
+      hooks: [{ type: 'command', command: cmd }],
+    });
+  }
 }
 
 fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
 JSEOF
-  ok "PreToolUse + SessionStart hooks wired in ~/.claude/settings.json"
-else
-  warn "Python hook scripts not found — skipping safety + session-start install"
-fi
+ok "9 SuperAgent hooks wired in ~/.claude/settings.json"
+
+# Marker for Wave 1 completion
+mkdir -p "$HOME/.superagent" 2>/dev/null || true
+date -Iseconds > "$HOME/.superagent/.wave-1.installed" 2>/dev/null || true
 echo ""
 
 # ── Step 9c: Install .mcp.json baseline ──────────────────────────────────────

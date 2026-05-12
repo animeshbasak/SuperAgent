@@ -69,7 +69,7 @@ rules:
     complexity: trivial
 
   - name: plan
-    signal: "\\b(plan|design approach|strategy for|roadmap)\\b"
+    signal: "(\\b(write|make|create|draft|build|need|prepare) (a |the |an )?plan\\b|\\bplan how\\b|\\bdesign approach\\b|\\bstrategy for\\b|\\broadmap\\b)"
     chain: [brainstorming, writing-plans, plan-ceo-review, plan-eng-review]
     complexity: complex
 
@@ -178,5 +178,25 @@ rules:
     signal: "(\\brm -rf\\b|\\bgit (push --force|reset --hard|branch -D|clean -f)|--no-verify\\b|--dangerously-skip-permissions\\b|\\b(DROP|TRUNCATE) (TABLE|DATABASE|SCHEMA)\\b|\\bmigrate down\\b|\\bmigration:rollback\\b|\\bmkfs\\b|\\bdd if=.*of=/dev/(sd|disk|nvme)|\\bkill(all)? -9\\b|\\bsudo rm\\b|\\bchmod -R 0?777\\b)"
     chain: [superagent-safety]
     complexity: complex
+
+  - name: tier-downgrade
+    signal: "\\bdowngrade to (sonnet|haiku|opus)\\b"
+    chain: [auto-fallback, cost-budget]
+    complexity: trivial
+
+  - name: cost-budget
+    signal: "\\b(budget|spend|daily.+cost|alert|tier.+(downgrade|shift)|plan.+(limit|cap))\\b"
+    chain: [token-stats, cost-budget, auto-fallback]
+    complexity: trivial
+
+  - name: superagent-learn-loop
+    signal: "\\b(promote|pattern|routing.+pattern|learn(ing)?.+loop|don.?t.+rediscover)\\b"
+    chain: [superagent-learn-loop, learn]
+    complexity: trivial
+
+  - name: meta-routes
+    signal: "\\b(last \\d+ routes|recent routes|last few prompts|routes\\.jsonl|outcome history|routes and their outcomes)\\b"
+    chain: [token-stats]
+    complexity: trivial
 
 build_archetypes: [bug, feature, ui, webgl, refactor, framer-motion]

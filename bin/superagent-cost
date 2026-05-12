@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: superagent-cost [today|week|all] [--json]
-# Reads ~/.superagent/cost/calls.jsonl, groups by model, prints $ cost table + coach note.
+# Reads ~/.superagent/cost/calls.jsonl (mixed v1/v2 records), groups by model, prints $ cost table + coach note.
 # --json emits machine-readable output (used by superagent-limit-watch.sh hook).
 set -euo pipefail
 RANGE="today"
@@ -23,9 +23,9 @@ if [[ ! -f "$FILE" ]]; then
   exit 0
 fi
 
-python3 - "$FILE" "$RANGE" "$JSON_MODE" <<'PY'
+python3 - "$FILE" "$RANGE" "$JSON_MODE" "$HOME" <<'PY'
 import json, sys, datetime, collections, os
-path, rng, json_mode = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+path, rng, json_mode, home = sys.argv[1], sys.argv[2], sys.argv[3] == "1", sys.argv[4]
 now = datetime.datetime.now(datetime.timezone.utc)
 cutoff = {
   'today': now.replace(hour=0, minute=0, second=0, microsecond=0),
@@ -36,8 +36,27 @@ if cutoff is None:
   print(f"unknown range: {rng}. use today|week|all", file=sys.stderr)
   sys.exit(2)
 
-# $/1M tokens. local:* tier is $0 (Ollama / LM Studio / llama.cpp / qwen / deepseek / minimax).
-PRICE = {'opus': 30, 'sonnet': 6, 'haiku': 1, 'local': 0, 'unknown': 10}
+# 4-dim pricing per 1M tokens (Anthropic 2026-Q2). Override at ~/.superagent/cost/pricing.json
+DEFAULT_PRICING = {
+  "haiku":   {"input": 0.25, "output": 1.25,  "cache_write": 0.30,  "cache_read": 0.03},
+  "sonnet":  {"input": 3.00, "output": 15.00, "cache_write": 3.75,  "cache_read": 0.30},
+  "opus":    {"input": 15.0, "output": 75.00, "cache_write": 18.75, "cache_read": 1.50},
+  "local":   {"input": 0,    "output": 0,     "cache_write": 0,     "cache_read": 0},
+  "unknown": {"input": 5.0,  "output": 25.00, "cache_write": 6.25,  "cache_read": 0.50},
+}
+PRICING = DEFAULT_PRICING
+override_path = os.path.join(home, ".superagent", "cost", "pricing.json")
+if os.path.exists(override_path):
+  try:
+    with open(override_path) as f:
+      override = json.load(f)
+    if isinstance(override, dict) and override:
+      for tier, dims in override.items():
+        if tier in PRICING and isinstance(dims, dict):
+          PRICING[tier].update(dims)
+  except Exception:
+    pass
+
 LOCAL_MARKERS = ('local', 'ollama', 'llamacpp', 'lmstudio', 'qwen', 'deepseek', 'minimax')
 
 def bucket(model_str: str) -> str:
@@ -49,8 +68,23 @@ def bucket(model_str: str) -> str:
             return k
     return 'unknown'
 
-agg = collections.Counter()
-recent_429_count = 0  # placeholder — computed below if the field exists
+def record_usd(rec) -> float:
+    tier = bucket(rec.get('model', ''))
+    p = PRICING.get(tier, PRICING['unknown'])
+    if 'input_tokens' in rec:
+      # v2 schema
+      i = int(rec.get('input_tokens', 0) or 0)
+      o = int(rec.get('output_tokens', 0) or 0)
+      cw = int(rec.get('cache_write_tokens', 0) or 0)
+      cr = int(rec.get('cache_read_tokens', 0) or 0)
+      return (i*p['input'] + o*p['output'] + cw*p['cache_write'] + cr*p['cache_read']) / 1_000_000
+    # v1 schema — treat `tokens` as output_tokens only (conservative; SDK historically reported completion tokens here)
+    t = int(rec.get('tokens', 0) or 0)
+    return t * p['output'] / 1_000_000
+
+agg_tokens = collections.Counter()  # by tier (for table)
+agg_usd = collections.defaultdict(float)
+recent_429_count = 0
 for line in open(path):
     line = line.strip()
     if not line:
@@ -60,28 +94,27 @@ for line in open(path):
         t = datetime.datetime.fromisoformat(r['ts'])
         if t < cutoff:
             continue
-        m = bucket(r.get('model', ''))
-        agg[m] += int(r.get('tokens', 0))
+        tier = bucket(r.get('model', ''))
+        # token sum: prefer v2 fields, fall back to v1
+        if 'input_tokens' in r:
+          tot = sum(int(r.get(k, 0) or 0) for k in ('input_tokens','output_tokens','cache_write_tokens','cache_read_tokens'))
+        else:
+          tot = int(r.get('tokens', 0) or 0)
+        agg_tokens[tier] += tot
+        agg_usd[tier] += record_usd(r)
         if r.get('http_status') == 429 and (now - t).total_seconds() <= 60:
             recent_429_count += 1
     except Exception:
         continue
 
-# Compute total $
-total = 0.0
-by_model = {}
-for m, tok in agg.items():
-    cost = tok * PRICE.get(m, PRICE['unknown']) / 1_000_000
-    total += cost
-    by_model[m] = {"tokens": tok, "usd": round(cost, 4)}
+total = sum(agg_usd.values())
+by_model = {tier: {"tokens": agg_tokens[tier], "usd": round(agg_usd[tier], 4)} for tier in agg_tokens}
 
-# Plan limit signal (env-driven; default to $20/day pro tier as a sane floor)
 plan_limit = float(os.environ.get('SUPERAGENT_PLAN_LIMIT_USD', '20'))
 pct_of_plan = (total / plan_limit) if plan_limit > 0 else 0
 
-# 5h-reset estimate: assume 5h rolling window, return minutes until oldest sample exits
-# (best-effort — real value comes from Anthropic API headers when available)
-time_to_5h_reset = 300  # default 5h floor
+# 5h-reset estimate (unchanged from v1)
+time_to_5h_reset = 300
 try:
     five_h_ago = now - datetime.timedelta(hours=5)
     oldest_in_window = None
@@ -108,28 +141,28 @@ if json_mode:
         "time_to_5h_reset_minutes": time_to_5h_reset,
         "recent_429_count_60s": recent_429_count,
         "plan_limit_usd": plan_limit,
+        "pricing_version": "2026-Q2",
     }
     print(json.dumps(out))
     sys.exit(0)
 
-if sum(agg.values()) == 0:
+if sum(agg_tokens.values()) == 0:
     print(f"no records in range: {rng}")
     sys.exit(0)
 
 print(f"{'model':8} {'tokens':>12}  {'$':>8}")
 print('-' * 32)
 for m in ('opus', 'sonnet', 'haiku', 'local', 'unknown'):
-    tok = agg.get(m, 0)
+    tok = agg_tokens.get(m, 0)
     if tok == 0:
         continue
-    cost = tok * PRICE[m] / 1_000_000
-    print(f"{m:8} {tok:>12,}  ${cost:>7.2f}")
+    print(f"{m:8} {tok:>12,}  ${agg_usd[m]:>7.2f}")
 print('-' * 32)
-print(f"{'TOTAL':8} {sum(agg.values()):>12,}  ${total:>7.2f}")
+print(f"{'TOTAL':8} {sum(agg_tokens.values()):>12,}  ${total:>7.2f}")
 
-opus = agg.get('opus', 0)
-haiku = agg.get('haiku', 0)
-local = agg.get('local', 0)
+opus = agg_tokens.get('opus', 0)
+haiku = agg_tokens.get('haiku', 0)
+local = agg_tokens.get('local', 0)
 if opus > 500_000 and haiku < 100_000 and local < 100_000:
     print()
     print("Coach: heavy Opus use — try /effort low, Haiku, or local model for simple tasks.")

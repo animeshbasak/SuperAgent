@@ -1,0 +1,256 @@
+#!/usr/bin/env bash
+# superagent-patterns — pattern store CLI for the SuperAgent learning loop.
+# Subcommands: list, promote, decay, protect, prune.
+set -euo pipefail
+
+ROOT="$HOME/.superagent/brain"
+PATTERNS="$ROOT/patterns.jsonl"
+PROTECTED="$ROOT/protected-patterns.jsonl"
+ROUTES="$ROOT/routes.jsonl"
+
+usage() {
+  cat <<EOF
+Usage: superagent-patterns <subcommand> [flags]
+
+Subcommands:
+  list [--json]            List all stored patterns.
+  promote                  Scan routes.jsonl for repeated done-routes (>=3)
+                           and (re)write pattern records.
+  decay                    Apply exponential confidence decay to all patterns.
+  protect <pattern-id>     Flip protected:true on the matching pattern.
+  prune [--below RATE]     Remove unprotected patterns below RATE (default 0.1).
+
+Files:
+  $PATTERNS         (current store)
+  $PROTECTED   (manual protect list)
+  $ROUTES             (source data for promote)
+EOF
+}
+
+mkdir -p "$ROOT" 2>/dev/null || true
+[[ -f "$PATTERNS" ]]  || : > "$PATTERNS"
+[[ -f "$PROTECTED" ]] || : > "$PROTECTED"
+[[ -f "$ROUTES" ]]    || : > "$ROUTES"
+
+cmd="${1:-}"
+case "$cmd" in
+  -h|--help|"")
+    usage; exit 0
+    ;;
+  list)
+    json=0
+    [[ "${2:-}" == "--json" ]] && json=1
+    if [[ $json -eq 1 ]]; then
+      jq -sc '{count: length, patterns: .}' "$PATTERNS" 2>/dev/null || echo '{"count":0,"patterns":[]}'
+    else
+      printf '%-12s %-8s %-6s %-22s %s\n' ID SUCC USES SIGNAL CHAIN
+      jq -r '"\(.id)\t\(.successRate)\t\(.useCount)\t\(.signal)\t\(.chain | join(","))"' "$PATTERNS" 2>/dev/null \
+        | awk -F'\t' '{ printf "%-12s %-8s %-6s %-22s %s\n", $1, $2, $3, $4, $5 }'
+    fi
+    ;;
+  promote)
+    python3 - "$ROUTES" "$PATTERNS" <<'PY'
+import json, sys, hashlib, datetime, collections, os
+
+routes_path = sys.argv[1]
+patterns_path = sys.argv[2]
+
+PROMOTE_MIN_USES = int(os.environ.get('SUPERAGENT_LEARNING_PROMOTE_MIN_USES', '3'))
+INITIAL_SUCCESS_RATE = 0.6
+
+def signal_from_task(task: str) -> str:
+    import re
+    STOP = set("a an the is are was were be being been do does did has have had this that these those it i you we they to from in on at of for with by".split())
+    words = re.findall(r"[a-z0-9]+", (task or '').lower())
+    meaningful = [w for w in words if w not in STOP and len(w) >= 3]
+    return " ".join(sorted(set(meaningful))[:8])
+
+def pattern_id(signal, chain):
+    h = hashlib.sha256()
+    h.update(signal.encode())
+    h.update(b"|")
+    h.update(",".join(chain).encode())
+    return "p-" + h.hexdigest()[:8]
+
+existing = {}
+if os.path.exists(patterns_path):
+    with open(patterns_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+                existing[r['id']] = r
+            except Exception:
+                continue
+
+agg = collections.Counter()
+last_seen = {}
+if os.path.exists(routes_path):
+    with open(routes_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except Exception:
+                continue
+            if r.get('outcome') != 'done':
+                continue
+            chain = r.get('chain') or []
+            if not chain:
+                continue
+            signal = signal_from_task(r.get('task', ''))
+            key = (signal, tuple(chain))
+            agg[key] += 1
+            last_seen[key] = r.get('ts', '')
+
+now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+for (signal, chain), count in agg.items():
+    if count < PROMOTE_MIN_USES:
+        continue
+    pid = pattern_id(signal, list(chain))
+    rec = existing.get(pid, {
+        'id': pid,
+        'kind': 'task-routing',
+        'signal': signal,
+        'chain': list(chain),
+        'successRate': INITIAL_SUCCESS_RATE,
+        'useCount': 0,
+        'lastUsed': now,
+        'protected': False,
+    })
+    delta_uses = max(0, count - rec.get('useCount', 0))
+    if delta_uses > 0:
+      rec['useCount'] = count
+      rec['successRate'] = min(1.0, rec.get('successRate', INITIAL_SUCCESS_RATE) + 0.03 * delta_uses)
+      rec['lastUsed'] = last_seen.get((signal, chain)) or now
+    existing[pid] = rec
+
+tmp = patterns_path + ".tmp"
+with open(tmp, 'w') as f:
+    for r in existing.values():
+        f.write(json.dumps(r) + "\n")
+os.replace(tmp, patterns_path)
+PY
+    ;;
+
+  decay)
+    python3 - "$PATTERNS" <<'PY'
+import json, sys, datetime, math, os
+
+path = sys.argv[1]
+DECAY_PER_HOUR = float(os.environ.get('SUPERAGENT_LEARNING_DECAY_RATE_PER_HOUR', '0.005'))
+MIN_CONF = float(os.environ.get('SUPERAGENT_LEARNING_MIN_CONFIDENCE', '0.1'))
+PROTECTED_FLOOR = float(os.environ.get('SUPERAGENT_LEARNING_PROTECTED_FLOOR', '0.3'))
+
+now = datetime.datetime.now(datetime.timezone.utc)
+
+records = []
+if os.path.exists(path):
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except Exception:
+                continue
+
+kept = []
+for r in records:
+    sr = float(r.get('successRate', 0))
+    last_used = r.get('lastUsed') or now.isoformat()
+    try:
+        t = datetime.datetime.fromisoformat(last_used)
+    except Exception:
+        t = now
+    hours = max(0.0, (now - t).total_seconds() / 3600.0)
+    sr_decayed = sr * math.exp(-DECAY_PER_HOUR * hours)
+
+    if r.get('protected'):
+        sr_decayed = max(sr_decayed, PROTECTED_FLOOR)
+        r['successRate'] = round(sr_decayed, 4)
+        kept.append(r)
+        continue
+
+    if sr_decayed < MIN_CONF:
+        continue
+
+    r['successRate'] = round(sr_decayed, 4)
+    kept.append(r)
+
+tmp = path + ".tmp"
+with open(tmp, 'w') as f:
+    for r in kept:
+        f.write(json.dumps(r) + "\n")
+os.replace(tmp, path)
+PY
+    ;;
+
+  protect)
+    pid="${2:-}"
+    [[ -z "$pid" ]] && { echo "Usage: superagent-patterns protect <pattern-id>" >&2; exit 1; }
+    python3 - "$PATTERNS" "$pid" <<'PY'
+import json, sys, os
+path, pid = sys.argv[1], sys.argv[2]
+records = []
+hit = False
+if os.path.exists(path):
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            try:
+                r = json.loads(line)
+                if r.get('id') == pid:
+                    r['protected'] = True
+                    hit = True
+                records.append(r)
+            except Exception:
+                continue
+if not hit:
+    sys.stderr.write(f"no pattern with id '{pid}' found\n")
+    sys.exit(1)
+tmp = path + ".tmp"
+with open(tmp, 'w') as f:
+    for r in records:
+        f.write(json.dumps(r) + "\n")
+os.replace(tmp, path)
+PY
+    ;;
+  prune)
+    threshold="0.1"
+    if [[ "${2:-}" == "--below" ]]; then
+      threshold="${3:-0.1}"
+    fi
+    python3 - "$PATTERNS" "$threshold" <<'PY'
+import json, sys, os
+path, thr = sys.argv[1], float(sys.argv[2])
+records = []
+if os.path.exists(path):
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            try:
+                records.append(json.loads(line))
+            except Exception:
+                continue
+kept = [r for r in records if r.get('protected') or float(r.get('successRate', 0)) >= thr]
+tmp = path + ".tmp"
+with open(tmp, 'w') as f:
+    for r in kept:
+        f.write(json.dumps(r) + "\n")
+os.replace(tmp, path)
+PY
+    ;;
+  *)
+    echo "unknown subcommand: $cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

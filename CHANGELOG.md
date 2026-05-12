@@ -4,6 +4,35 @@ All notable changes to SuperAgent are documented here.
 
 ---
 
+## v2.4.0 — 2026-05-09 (Wave 1: Foundation)
+
+### Added
+- **Hooks lifecycle expanded** — 5 net-new events: `UserPromptSubmit`, `SubagentStop`, `Notification`, `PermissionRequest`, `PreCompact`. Total wired hooks: 4 → 9.
+- **Learning loop** — `~/.superagent/brain/patterns.jsonl` store with promote/decay/protect/prune. Classifier prepends matched chains when `successRate ≥ 0.6 AND useCount ≥ 5`.
+- **Cost-tracker schema v2** — 4-dim pricing (input/output/cache_write/cache_read), `pricing_version` field, v1 records auto-detected and treated as `output_tokens` only.
+- **Budget alerts + auto-downgrade** — `bin/superagent-cost-alerts`, `~/.superagent/cost/budget.json`, `~/.superagent/auto-downgrade.flag`. Tiered alerts at 50/75/90/100% of daily budget.
+- **`superagent-learn-loop` skill** — user-facing skill for the learning loop.
+- **`cost-budget` skill** — user-facing skill for budget enforcement.
+- **`bin/superagent-patterns`** — pattern store CLI.
+- **`bin/superagent-cost-alerts`** — alert emitter + flag manager.
+- **`~/.superagent/defaults.toml`** — single source of truth for magic numbers.
+
+### Changed
+- `auto-fallback` skill honors `auto-downgrade.flag` for in-Anthropic tier shifts (precedence: budget > rate-limit > preference).
+- `superagent-classify` reads `patterns.jsonl` after `rules.yaml`.
+- `superagent-tracker.sh` writes 4-dim records.
+- `superagent-distill.sh` calls `superagent-patterns promote && decay` at session Stop.
+
+### Migration
+- v1 `calls.jsonl` records auto-detected and read transparently (no rewrite).
+- Backup of pre-Wave-1 `calls.jsonl` saved to `~/.superagent/cost/calls.v1.jsonl.bak`.
+- Idempotency marker at `~/.superagent/.wave-1.installed`.
+
+### Bench
+- 31 prompts (5 added for Wave 1 keywords: cost-budget, learn-loop, meta-routes, permission, tier-downgrade). Gate ≥85% routing accuracy; current avg 1.000.
+
+---
+
 ## v2.2.0 — 2026-04-30
 
 The multi-domain + cost-aware-routing release. SuperAgent now expands beyond code into video generation, and ships a cost-aware fallback brain that auto-routes to free/local LLMs when Anthropic limits approach. 4-engineer parallel review (skills/install/routing/marketing) drove this release; the locked plan is at `docs/plans/superagent-v2-2-multi-domain.md`.

@@ -109,6 +109,25 @@ prevented.
 - If switching breaks Claude Code → `superagent-switch back` restores Anthropic.
 - Backed-up `ANTHROPIC_API_KEY` lives at `~/.superagent/anthropic-key.bak`.
 
+## In-Anthropic tier shift (Wave 1)
+
+In addition to swapping the *backend* (Anthropic ↔ local), the auto-fallback skill now honors **in-tier downgrades** within Anthropic when the cost-tracker drops `~/.superagent/auto-downgrade.flag`.
+
+### Trigger
+
+`bin/superagent-cost-alerts` writes `~/.superagent/auto-downgrade.flag` containing a single token (e.g. `sonnet` or `haiku`) when daily spend crosses the budget's `auto_downgrade.at` threshold (default 0.9).
+
+### Action when flag present
+
+1. Read the flag file: `cat ~/.superagent/auto-downgrade.flag`.
+2. If the current model is **higher tier** than the flag target (Opus → Sonnet, or Sonnet → Haiku), recommend or auto-perform the in-tier shift.
+3. Announce the shift (`Backend: anthropic:<old-tier> → anthropic:<new-tier>  Reason: budget at 90%`).
+4. The flag is cleared automatically by `superagent-cost-alerts` when usage drops below the threshold (e.g. after the 5h reset window).
+
+### Precedence with other guards
+
+When multiple shift signals fire simultaneously, apply in order: **budget > rate-limit > preference**. Budget downgrade beats a user preference for Opus; rate-limit (429) override beats both for the duration of the rate window.
+
 ## Notes
 
 - All state under `~/.superagent/`, never `~/.claude/`.

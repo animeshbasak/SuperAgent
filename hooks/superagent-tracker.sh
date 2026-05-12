@@ -10,6 +10,54 @@ LOG="$HOME/.claude/superagent-tracker.log"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG" 2>/dev/null || true; }
 
+# Extract 4-dim usage from tool_response.usage; fall back to v1 estimate.
+emit_cost_record() {
+  local payload="$1"
+  local tool_name="$2"
+  local project="$3"
+  local fallback_estimate="$4"
+
+  local usage in_t out_t cw_t cr_t
+  usage=$(echo "$payload" | jq -c '.tool_response.usage // null' 2>/dev/null || echo "null")
+
+  if [[ "$usage" != "null" && -n "$usage" ]]; then
+    in_t=$(echo "$usage" | jq -r '.input_tokens // 0')
+    out_t=$(echo "$usage" | jq -r '.output_tokens // 0')
+    cw_t=$(echo "$usage" | jq -r '.cache_creation_input_tokens // 0')
+    cr_t=$(echo "$usage" | jq -r '.cache_read_input_tokens // 0')
+  else
+    in_t=0
+    out_t="${fallback_estimate:-0}"
+    cw_t=0
+    cr_t=0
+  fi
+
+  local task_id
+  task_id="${SA_TRACE_ID:-}"
+  if [[ -z "$task_id" ]]; then
+    task_id=$(printf '%s%s' "$(date +%s%N 2>/dev/null || date +%s)" "$tool_name" \
+      | (shasum -a 256 2>/dev/null || sha256sum 2>/dev/null) | cut -c1-8)
+  fi
+
+  local cost_file="$HOME/.superagent/cost/calls.jsonl"
+  mkdir -p "$(dirname "$cost_file")" 2>/dev/null || true
+  {
+    printf '%s' "{"
+    printf '"ts":"%s",' "$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
+    printf '"project":"%s",' "${project:-unknown}"
+    printf '"tool":"%s",' "$tool_name"
+    printf '"model":"%s",' "${CLAUDE_MODEL:-unknown}"
+    printf '"input_tokens":%s,' "${in_t:-0}"
+    printf '"output_tokens":%s,' "${out_t:-0}"
+    printf '"cache_write_tokens":%s,' "${cw_t:-0}"
+    printf '"cache_read_tokens":%s,' "${cr_t:-0}"
+    printf '"task_id":"%s",' "$task_id"
+    printf '"http_status":200,'
+    printf '"pricing_version":"2026-Q2"'
+    printf '}\n'
+  } >> "$cost_file" 2>/dev/null || true
+}
+
 init_stats() {
   if [[ ! -f "$STATS" ]]; then
     echo '{"version":1,"projects":{}}' > "$STATS"
@@ -87,23 +135,12 @@ if [[ "$TOOL_NAME" == "Bash" ]]; then
   echo "$COMMAND" | grep -q "mempalace"  && TOOL_TYPE="mempalace"
 fi
 
-# Non-Bash tools: estimate tokens from response size, log to cost ledger,
-# then exit before the graphify/mempalace stats accounting (which is Bash-only).
+# Non-Bash tools: emit v2 cost record (uses real usage if Claude provided it,
+# else falls back to response-size estimate as output_tokens).
 if [[ "$TOOL_NAME" != "Bash" ]]; then
   RESP_BYTES=$(echo "$PAYLOAD" | jq -r '(.tool_response | tostring) | length' 2>/dev/null || echo 0)
-  # ~4 chars per token rough estimate
   SYN_TOKENS=$(( ${RESP_BYTES:-0} / 4 ))
-  COST_FILE="$HOME/.superagent/cost/calls.jsonl"
-  mkdir -p "$(dirname "$COST_FILE")" 2>/dev/null || true
-  {
-    printf '%s' "{"
-    printf '"ts":"%s",' "$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
-    printf '"project":"%s",' "${PWD:-unknown}"
-    printf '"tool":"%s",' "$TOOL_NAME"
-    printf '"tokens":%s,' "${SYN_TOKENS:-0}"
-    printf '"model":"%s"' "${CLAUDE_MODEL:-unknown}"
-    printf '}\n'
-  } >> "$COST_FILE" 2>/dev/null || true
+  emit_cost_record "$PAYLOAD" "$TOOL_NAME" "${PWD:-unknown}" "$SYN_TOKENS"
   exit 0
 fi
 
@@ -191,17 +228,7 @@ jq --arg project  "$PROJECT" \
    "$STATS" > "$TMP" 2>>"$LOG" && mv "$TMP" "$STATS" \
    || log "jq update failed for $TOOL_TYPE in $PROJECT"
 
-# Per-call cost log (Task 5.3)
-COST_FILE="$HOME/.superagent/cost/calls.jsonl"
-mkdir -p "$(dirname "$COST_FILE")" 2>/dev/null || true
-{
-  printf '%s' "{"
-  printf '"ts":"%s",' "$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
-  printf '"project":"%s",' "${PROJECT:-unknown}"
-  printf '"tool":"%s",' "${TOOL_TYPE:-unknown}"
-  printf '"tokens":%s,' "${RESPONSE_TOKENS:-0}"
-  printf '"model":"%s"' "${CLAUDE_MODEL:-unknown}"
-  printf '}\n'
-} >> "$COST_FILE" 2>/dev/null || true
+# Per-call cost log (Wave 1 v2 schema)
+emit_cost_record "$PAYLOAD" "$TOOL_NAME" "${PROJECT:-unknown}" "${RESPONSE_TOKENS:-0}"
 
 exit 0

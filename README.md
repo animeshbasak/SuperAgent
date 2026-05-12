@@ -4,13 +4,13 @@
 
 ### Stop paying for tokens your AI burned re-reading your codebase.
 
-**One brain. Seven IDEs. 21 skills. 26/26 routing accuracy. Free local fallback. No rate limits.**
+**One brain. Seven IDEs. 23 skills. 31/31 routing accuracy. Self-improving. Free local fallback.**
 
-<a href="https://github.com/animeshbasak/SuperAgent/raw/main/docs/media/superagent-v2.2-reel.mp4">
-  <img src="docs/media/superagent-v2.2-reel-poster.png" alt="SuperAgent v2.2 — 30-second feature reel (click to play)" width="820" />
+<a href="https://github.com/animeshbasak/SuperAgent/raw/main/docs/media/superagent-v2.4-reel.mp4">
+  <img src="docs/media/superagent-v2.2-reel-poster.png" alt="SuperAgent v2.4 — Wave 1 reel (click to play)" width="820" />
 </a>
 
-<sub>30-second feature reel · rendered deterministically with <a href="https://github.com/heygen-com/hyperframes">hyperframes</a> via <code>/video-craft</code> · <a href="https://github.com/animeshbasak/SuperAgent/raw/main/docs/media/superagent-v2.2-reel.mp4">download MP4 (5.3 MB)</a></sub>
+<sub>28-second Wave 1 reel · authored with <a href="https://github.com/heygen-com/hyperframes">hyperframes</a> at <code>docs/video/reel-wave1/</code> · render with <code>npx hyperframes render</code> (Node ≥22) · earlier v2.2 reel: <a href="https://github.com/animeshbasak/SuperAgent/raw/main/docs/media/superagent-v2.2-reel.mp4">download MP4 (5.3 MB)</a></sub>
 
 ```bash
 git clone https://github.com/animeshbasak/SuperAgent
@@ -19,13 +19,29 @@ bash SuperAgent/install-universal.sh
 
 [![Stars](https://img.shields.io/github/stars/animeshbasak/SuperAgent?style=social)](https://github.com/animeshbasak/SuperAgent)
 [![Platforms](https://img.shields.io/badge/platforms-8-blue)](#works-with-every-ai-coding-tool-you-use)
-[![Bench](https://img.shields.io/badge/bench-26%2F26%20PASS-brightgreen)](#proof)
-[![Skills](https://img.shields.io/badge/skills-21-purple)](#21-skills-auto-routed)
+[![Bench](https://img.shields.io/badge/bench-31%2F31%20PASS-brightgreen)](#proof)
+[![Skills](https://img.shields.io/badge/skills-23-purple)](#21-skills-auto-routed)
+[![Wave 1](https://img.shields.io/badge/v2.4-Wave_1_Foundation-blueviolet)](#whats-new-in-v240--wave-1-foundation)
 [![Token Savings](https://img.shields.io/badge/token_savings-95%25-brightgreen)](#the-receipt-share-your-savings)
 [![Free LLM Fallback](https://img.shields.io/badge/free_LLM-fallback-orange)](#act-2--the-system)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
+
+---
+
+## What's new in v2.4.0 — Wave 1: Foundation
+
+> **The classifier learns from every session.** Three foundations shipped on top of v2.2: a self-improving learning loop, the full Claude Code hook lifecycle, and per-day budget enforcement.
+
+| Pillar | What it does | Where it lives |
+|---|---|---|
+| 🧠 **Learning loop** | Every `Stop` runs `superagent-patterns promote && decay`. Repeated done-routes (≥3 occurrences) become pattern records. Classifier prepends a matched chain when `successRate ≥ 0.6 AND useCount ≥ 5`. | `~/.superagent/brain/patterns.jsonl`, `bin/superagent-patterns`, [skill](skills/superagent-learn-loop/SKILL.md) |
+| 🪝 **9-event hook lifecycle** | 5 net-new Claude Code hooks: `UserPromptSubmit` (classify+announce), `SubagentStop` (attribute work), `Notification` (filter noise), `PermissionRequest` (allow-list), `PreCompact` (snapshot routes before window collapse). | `hooks/superagent-*.py` |
+| 💸 **Budget alerts + auto-downgrade** | 4-dim Anthropic pricing (input/output/cache_write/cache_read). Tiered alerts at 50 / 75 / 90 / 100 % of daily budget. At 90 % `auto-downgrade.flag` drops; `auto-fallback` skill shifts Opus → Sonnet → Haiku. | `bin/superagent-cost-alerts`, `~/.superagent/cost/budget.json`, [skill](skills/cost-budget/SKILL.md) |
+
+**Receipts**: 21 sequential tasks, 20 commits on `wave-1-foundation`, 19 new test scripts, 31/31 bench prompts at AVG 1.000.
+Migration is automatic: v1 `calls.jsonl` reads transparently as v2; first install backs up the original to `cost/calls.v1.jsonl.bak`. Full notes in [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
@@ -49,7 +65,7 @@ The vendors don't fix these because the bills are the product. So we built the l
 
 ### Act 2 — The system
 
-SuperAgent is the layer between you and the model. You write your task once. The brain reads it, scores it against 21 skills, picks the chain, gates the risky calls, watches your budget, and falls through to a free local model the second your plan starts to bleed.
+SuperAgent is the layer between you and the model. You write your task once. The brain reads it, scores it against 23 skills, picks the chain, gates the risky calls, watches your budget, learns which chains actually worked, and falls through to a free local model the second your plan starts to bleed.
 
 ```
             ┌──────────────────────────────────────────────┐
@@ -82,8 +98,8 @@ SuperAgent is the layer between you and the model. You write your task once. The
                             │
                             ▼
        ┌─────────────────────────────────────────────────────────┐
-       │  ④ SKILLS RUN     21 skills × 7 IDEs                    │
-       │     bench: 26/26 PASS · AVG 1.000 · HARD GATE PASS      │
+       │  ④ SKILLS RUN     23 skills × 7 IDEs                    │
+       │     bench: 31/31 PASS · AVG 1.000 · HARD GATE PASS      │
        │     memory persists across sessions (mempalace)          │
        └─────────────────────────────────────────────────────────┘
 ```
@@ -131,7 +147,7 @@ The cleanest way to read the table: SuperAgent is the *router*. Cursor / Cline /
 | **Multi-platform compile (1 source → 7 IDEs)** | ✅ | locked to Cursor | locked to GitHub | locked to VS Code | locked to Aider CLI | locked to .continue | n/a | n/a |
 | **Knowledge graph + cross-session memory** | ✅ graphify+mempalace | partial | — | — | — | — | ✅ memory-only | — |
 | **Multi-domain (code + video + design + WebGL)** | ✅ | code only | code only | code only | code only | code only | code only | code only |
-| **21 routed skills, ⩾0.90 hard-gate bench** | ✅ 26/26 | — | — | — | — | rules-only | — | unrouted |
+| **23 routed skills, ⩾0.90 hard-gate bench** | ✅ 31/31 | — | — | — | — | rules-only | — | unrouted |
 | **Per-skill agent-memory** | ✅ | — | — | — | — | — | partial | — |
 | **Open-source, local-first, no API key required** | ✅ MIT | proprietary | proprietary | MIT | Apache 2.0 | Apache 2.0 | MIT | MIT |
 | **Token savings receipt + shareable badge** | ✅ | — | — | — | — | — | — | — |
@@ -192,12 +208,14 @@ bash install.sh                                # Claude Code (original)
 | `graphify`            | Build and query your codebase knowledge graph |
 | `mempalace`           | Local-first cross-session memory |
 
-### 21 skills, auto-routed
+### 23 skills, auto-routed
 
 | Skill | When it fires |
 |---|---|
 | `superagent` | Master router — classifies, composes chain, picks backend |
-| `superagent-safety` | **NEW** Reversibility doctrine — pauses on risky shell + history-rewrite + sensitive-file edits |
+| `superagent-learn-loop` | **v2.4** Self-improving classifier — `patterns.jsonl` learning loop with promote/decay/protect/prune (Stop hook runs every session) |
+| `cost-budget` | **v2.4** Per-day budget alerts at 50/75/90/100% + auto-downgrade.flag at 90% spend (4-dim Anthropic pricing) |
+| `superagent-safety` | Reversibility doctrine — pauses on risky shell + history-rewrite + sensitive-file edits |
 | `auto-fallback` | Cost-aware switch to local LLM + 3-tier router |
 | `superagent-switch` | Manual model swap with canary preflight |
 | `free-llm` | Set up free-claude-code proxy + provider routing |
@@ -315,7 +333,7 @@ For video-craft, every render auto-stamps a footer: `Rendered by SuperAgent · 4
 
 **Does it work with my existing Claude setup?** Additive only. Zero modification to existing files — verified by MD5 on every release.
 
-**I'm on Cursor, not Claude Code. Does it work?** Yes. The compiler turns 21 skills into Cursor `.mdc` rules, Codex `AGENTS.md`, Copilot instructions, Continue rules, etc. — whatever your platform expects. Hooks fire on Claude Code only; on every other platform the agent self-polices via the `superagent-safety` skill.
+**I'm on Cursor, not Claude Code. Does it work?** Yes. The compiler turns 23 skills into Cursor `.mdc` rules, Codex `AGENTS.md`, Copilot instructions, Continue rules, etc. — whatever your platform expects. Hooks fire on Claude Code only (full 9-event lifecycle as of v2.4); on every other platform the agent self-polices via the `superagent-safety` skill.
 
 **What happens if my local model crashes mid-task?** Canary preflight (3-step Read → Edit → Bash test) refuses to switch if the model fails. Once switched, the auto-fallback policy on canary failure is "freeze + prompt" — you decide whether to retry, pick a different model, or restore Anthropic.
 
@@ -353,7 +371,7 @@ python3 bin/superagent-compile --platform all
 
 ```
 SuperAgent/
-├── skills/                  21 skills (source of truth)
+├── skills/                  23 skills (source of truth)
 ├── agents/                  Claude agent files (with frontmatter hooks)
 ├── bin/                     CLIs (classify, compile, switch, chain, cost,
 │                            learn, oneshot, ship)

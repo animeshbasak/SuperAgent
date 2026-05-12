@@ -43,6 +43,27 @@ Auto-review pipeline. Sequentially runs the full product (CEO), design, and engi
 *(Full instructions available in SuperAgent skills directory)*
 
 
+### cost-budget
+> Per-day Anthropic budget alerts and auto-downgrade. Reads ~/.superagent/cost/budget.json, emits tiered alerts at 50/75/90/100% of daily budget, and drops auto-downgrade.flag for the auto-fallback skill at 0.9. Use when user says "set budget", "alert me at 90%", "downgrade at threshold", "show today's spend".
+
+# cost-budget
+
+Wave 1 introduced per-task USD attribution and budget enforcement. The existing `token-stats` skill remains for stats; this skill is for *enforcement*.
+
+## When to use
+
+- User asks about today's spend, weekly cost, or budget status.
+- User wants to set or change a daily/monthly budget.
+- User configures auto-downgrade target (e.g. drop to Sonnet at 90%).
+- An alert in `~/.superagent/cost/alerts.jsonl` requires user attention.
+
+## Procedure
+
+1. **Show today's spend with full v2 bre
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
 ### cso
 > Security audit — OWASP top-10 scan, STRIDE threat model, secrets grep, supply-chain check. Output is a severity-ranked findings report.
 
@@ -273,6 +294,21 @@ For each bullet, produce explicit findings with file:line references.
 ## The 20 Steps
 
 ### 1. Detect platf
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### superagent-learn-loop
+> SuperAgent learning loop. Promotes recurring done-routes into pattern records, decays stale ones, and feeds them back to the classifier. Use whenever the user wants to teach SuperAgent which chains worked, prune old patterns, or inspect/protect specific routes. Triggers on "promote pattern", "learn this routing", "decay patterns", "list patterns", "protect pattern".
+
+# superagent-learn-loop
+
+The SuperAgent classifier becomes self-improving in v2.4. Every Stop hook runs `superagent-patterns promote` (extracts repeated done-routes into pattern records) and `superagent-patterns decay` (exponentially decays inactive ones). The classifier reads `~/.superagent/brain/patterns.jsonl` and prepends matched chains when `successRate ≥ 0.6` and `useCount ≥ 5`.
+
+## When to use
+
+- User says "remember this pattern" / "promote this route" / "learn this".
+- User wants to insp
 
 *(Full instructions available in SuperAgent skills directory)*
 
