@@ -229,4 +229,14 @@ rules:
     chain: [autopilot]
     complexity: moderate
 
+  - name: observability
+    signal: "\\b(show (me )?the trace|trace for|p50|p95|p99|metric|metrics for|histogram of|anomaly|spans?\\.jsonl)\\b"
+    chain: [observability]
+    complexity: trivial
+
+  - name: aidefence
+    signal: "\\b(scan (this |the )?prompt|prompt[ -]?injection|jailbreak detect|PII scan|defend prompts?)\\b"
+    chain: [aidefence]
+    complexity: trivial
+
 build_archetypes: [bug, feature, ui, webgl, refactor, framer-motion]

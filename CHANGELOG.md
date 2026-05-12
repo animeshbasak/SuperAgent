@@ -4,6 +4,29 @@ All notable changes to SuperAgent are documented here.
 
 ---
 
+## v2.5.0 — 2026-05-12 (Wave 2: Autonomous & Safe)
+
+### Added
+- **AIDefence — per-prompt scan** (§7.1). `bin/superagent-aidefence` ships with 58 regex patterns across 6 attack categories (instruction_override, role_switching, prompt_injection, jailbreak, encoding_attack, context_manipulation) plus 8 PII detectors (email, phone, SSN, credit card, Anthropic/AWS/OpenAI/GitHub keys). Wired into `UserPromptSubmit` hook: critical severity → `deny`, high → `ask`, medium/PII → log only. Adaptive EMA effectiveness from `feedback` subcommand. Default off — opt-in via `superagent-aidefence enable`. 100-prompt corpus gate: FP<5%, TP>85%.
+- **5 specialist dispatch agents** (§7.2): `architect`, `coder`, `reviewer`, `security-architect`, `tester`. Each carries a scoped `PreToolUse` safety hook so the gate survives subagent dispatch. Classifier routes specialist keywords to `agent:<name>` chain entries.
+- **JSONL observability** (§7.3). 4 new bins: `superagent-obs` (canonical span + metric emitter), `superagent-trace` (parent-child tree with p95 bottleneck flag), `superagent-metrics` (counter SUM, gauge LAST, histogram p50/p95/p99 + rolling-mean anomaly), `superagent-obs-rotate` (daily rotation + 30d retention). `superagent-tracker.sh` now emits a span + `agent_token_usage` histogram on every tool call. Stop hook rotates daily via `.last-rotate-<YYYYMMDD>` marker.
+- **Autopilot — `/loop` + pattern-driven prediction** (§7.4). `bin/superagent-autopilot` with bounded state (maxIterations ≤ 1000, timeoutMinutes ≤ 1440, history ≤ 50). 3-source task discovery (markdown checkboxes, `routes.jsonl outcome:halt`, `tasks.md`). `predict` uses `patterns.jsonl` from Wave 1 with a 0.7 confidence threshold. `iter` checks `auto-downgrade.flag` first (budget gate), then emits a `ScheduleWakeup` directive at 270s for cache-warm wake-ups (under Anthropic's 300s TTL). Default off.
+- **3 new user-facing skills**: `aidefence`, `observability`, `autopilot`. Three slash commands: `/aidefence`, `/observe`, `/autopilot`.
+
+### Changed
+- `hooks/superagent-prompt-submit.py` now calls AIDefence when enabled flag present; degrades silently on missing bin or non-zero exit.
+- `hooks/superagent-tracker.sh` emits Wave 2 obs records (span + token-usage metric) in addition to the v2 cost record.
+- `hooks/superagent-distill.sh` calls `superagent-obs-rotate` on every Stop event (idempotent via daily marker).
+- `skills/superagent/brain/rules.yaml` gains 9 new rules: 5 specialist routers (`agent-architect`/`agent-coder`/`agent-reviewer`/`agent-security-architect`/`agent-tester`) + `autopilot` + `observability` + `aidefence`. `agent-coder` regex covers `implement <feature>` / `refactor X` / `debug X` triggers.
+
+### Migration
+- `install.sh` scaffolds `~/.superagent/{aidefence,obs,autopilot}/` and seeds default `patterns.json` + autopilot `state.json`. Drops `~/.superagent/.wave-2.installed` marker. Idempotent — re-running install never duplicates state.
+
+### Bench
+- 37 prompts (6 added for Wave 2 keywords: threat-model, trace, p95 latency, scan prompt, autopilot, design API). Hard gate ≥85% maintained; current AVG 1.000.
+
+---
+
 ## v2.4.0 — 2026-05-09 (Wave 1: Foundation)
 
 ### Added

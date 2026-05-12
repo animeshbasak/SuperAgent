@@ -1,6 +1,6 @@
 {
   "name": "superagent",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Self-improving Claude Code router with learning loop, full hook lifecycle, and cost-aware routing.",
   "scripts": {
     "test": "for t in test/test-*.sh; do bash \"$t\" || exit 1; done",

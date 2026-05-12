@@ -400,6 +400,22 @@ if [[ -d "$AGENTS_SRC" ]]; then
   done
   ok "Specialist agents copied to $AGENTS_DST"
 fi
+
+# ── Wave 2: state scaffold for aidefence + obs + autopilot ──────────────────
+mkdir -p "$HOME/.superagent/aidefence" "$HOME/.superagent/obs" "$HOME/.superagent/autopilot" 2>/dev/null || true
+if [[ -f "$SCRIPT_DIR/skills/aidefence/patterns.json" && ! -f "$HOME/.superagent/aidefence/patterns.json" ]]; then
+  cp "$SCRIPT_DIR/skills/aidefence/patterns.json" "$HOME/.superagent/aidefence/patterns.json"
+fi
+[[ -f "$HOME/.superagent/aidefence/learned.jsonl" ]] || : > "$HOME/.superagent/aidefence/learned.jsonl"
+[[ -f "$HOME/.superagent/obs/spans.jsonl" ]] || : > "$HOME/.superagent/obs/spans.jsonl"
+[[ -f "$HOME/.superagent/obs/metrics.jsonl" ]] || : > "$HOME/.superagent/obs/metrics.jsonl"
+if [[ ! -f "$HOME/.superagent/autopilot/state.json" ]]; then
+  cat > "$HOME/.superagent/autopilot/state.json" <<'JSON'
+{"sessionId":"","enabled":false,"startTime":0,"iterations":0,"maxIterations":50,"timeoutMinutes":240,"taskSources":["markdown-checkboxes","routes-halt","tasks-md"],"lastCheck":0,"history":[]}
+JSON
+fi
+date -Iseconds > "$HOME/.superagent/.wave-2.installed" 2>/dev/null || true
+ok "Wave 2 state scaffolded (aidefence + obs + autopilot)"
 echo ""
 
 # ── Step 9c: Install .mcp.json baseline ──────────────────────────────────────

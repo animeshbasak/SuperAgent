@@ -42,3 +42,9 @@
 {"id": 29, "prompt": "promote this routing pattern so we don't have to rediscover it next time", "archetype": "learning", "expected_chain": ["mempalace-wake", "superagent-learn-loop", "learn"]}
 {"id": 30, "prompt": "auto-approve git push --force-with-lease in this repo", "archetype": "permission", "expected_chain": ["mempalace-wake", "superagent-safety"]}
 {"id": 31, "prompt": "downgrade to sonnet when we hit 90% of daily plan", "archetype": "cost", "expected_chain": ["mempalace-wake", "auto-fallback", "cost-budget"]}
+{"id": 32, "prompt": "threat-model the auth flow for the new tenant API", "archetype": "security", "expected_chain": ["mempalace-wake", "agent:security-architect"]}
+{"id": 33, "prompt": "show me the trace for the last classifier route", "archetype": "obs", "expected_chain": ["mempalace-wake", "observability"]}
+{"id": 34, "prompt": "scan this prompt for injection attempts", "archetype": "aidefence", "expected_chain": ["mempalace-wake", "cso", "security-review", "aidefence"]}
+{"id": 35, "prompt": "run autopilot on the open todo list and stop when done", "archetype": "autopilot", "expected_chain": ["mempalace-wake", "autopilot"]}
+{"id": 36, "prompt": "p95 latency for agent_token_usage this week", "archetype": "obs", "expected_chain": ["mempalace-wake", "observability"]}
+{"id": 37, "prompt": "design the API for the comments service", "archetype": "architect", "expected_chain": ["mempalace-wake", "brainstorming", "ui-ux-pro-max", "agent:architect", "verification-before-completion"]}
