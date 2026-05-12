@@ -72,6 +72,7 @@ python3 - "$TASK" "$RULES_FILE" "$HISTORY_HINT" <<'PYEOF'
 import sys
 import json
 import re
+import os
 import yaml
 
 task = sys.argv[1]
@@ -106,6 +107,49 @@ for rule in rules:
         if c not in COMPLEXITY_RANK:
             c = "moderate"
         matched_complexities.append(c)
+
+# ── pattern store augmentation (Wave 1 learning loop) ──────────────────────
+# Read ~/.superagent/brain/patterns.jsonl. A pattern wins when signal-token
+# overlap with the task is ≥1 AND successRate ≥ gate AND useCount ≥ gate.
+PATTERNS_PATH = os.path.expanduser("~/.superagent/brain/patterns.jsonl")
+GATE_SR = float(os.environ.get('SUPERAGENT_LEARNING_CLASSIFIER_GATE_SUCCESS_RATE', '0.6'))
+GATE_USE = int(os.environ.get('SUPERAGENT_LEARNING_CLASSIFIER_GATE_USE_COUNT', '5'))
+
+def _tokens(s: str) -> set:
+    return set(re.findall(r"[a-z0-9]+", (s or "").lower()))
+
+if os.path.exists(PATTERNS_PATH):
+    task_tokens = _tokens(task)
+    best = None
+    best_score = 0.0
+    with open(PATTERNS_PATH) as _pf:
+        for _line in _pf:
+            _line = _line.strip()
+            if not _line:
+                continue
+            try:
+                pat = json.loads(_line)
+            except Exception:
+                continue
+            if float(pat.get('successRate', 0)) < GATE_SR:
+                continue
+            if int(pat.get('useCount', 0)) < GATE_USE:
+                continue
+            sig_tokens = _tokens(pat.get('signal', ''))
+            if not sig_tokens:
+                continue
+            overlap = len(task_tokens & sig_tokens)
+            if overlap == 0:
+                continue
+            score = overlap * float(pat.get('successRate', 0))
+            if score > best_score:
+                best_score = score
+                best = pat
+    if best is not None:
+        injected = list(best.get('chain', []))
+        prefix = list(always_first)
+        rest = [c for c in chain if c not in prefix]
+        chain = prefix + injected + rest
 
 # stable dedup — preserve first-occurrence order
 seen = set()

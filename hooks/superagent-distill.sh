@@ -8,6 +8,21 @@
 set -eu
 
 PAYLOAD=$(cat 2>/dev/null || echo '{}')
+
+# ── Wave 1: pattern store maintenance (runs unconditionally) ──────────────────
+# Resolve superagent-patterns: prefer PATH, then script-relative bin/.
+PATBIN=""
+if command -v superagent-patterns >/dev/null 2>&1; then
+  PATBIN="$(command -v superagent-patterns)"
+elif [[ -x "$(dirname "${BASH_SOURCE[0]}")/../bin/superagent-patterns" ]]; then
+  PATBIN="$(dirname "${BASH_SOURCE[0]}")/../bin/superagent-patterns"
+fi
+
+if [[ -n "$PATBIN" ]]; then
+  "$PATBIN" promote >/dev/null 2>&1 || true
+  "$PATBIN" decay   >/dev/null 2>&1 || true
+fi
+
 TRANSCRIPT=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // empty' 2>/dev/null || echo "")
 [[ -n "$TRANSCRIPT" && -f "$TRANSCRIPT" ]] || exit 0
 
