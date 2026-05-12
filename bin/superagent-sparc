@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+# superagent-sparc — 5-phase gate-enforced pipeline (Wave 3 §8.1).
+# Subcommands: init <slug> | gate | advance | report | status [--json]
+set -euo pipefail
+
+ROOT="$HOME/.superagent/sparc"
+mkdir -p "$ROOT" 2>/dev/null || true
+
+usage() {
+  cat <<EOF
+Usage: superagent-sparc <subcommand> [args]
+
+Subcommands:
+  init <slug>      Scaffold ~/.superagent/sparc/<slug>/ with phase 1, gate open.
+  gate             Evaluate current phase gate; write pass/fail to state.
+  advance          Bump phase. Refuses unless gate_status == "passed".
+  report           Traceability matrix: AC -> pseudo -> arch -> test -> code.
+  status [--json]  Print current phase + gate state.
+
+Slug discovery: SUPERAGENT_SPARC_SLUG env var, else most-recently-updated dir.
+EOF
+}
+
+now_iso() { date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z; }
+
+# Find the active slug. Explicit env wins; otherwise pick most-recent dir.
+active_dir() {
+  if [[ -n "${SUPERAGENT_SPARC_SLUG:-}" ]]; then
+    echo "$ROOT/${SUPERAGENT_SPARC_SLUG}"; return 0
+  fi
+  local latest
+  latest=$(find "$ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
+            | xargs -I{} stat -f '%m %N' {} 2>/dev/null \
+            | sort -rn | head -1 | awk '{print $2}')
+  [[ -n "$latest" ]] && echo "$latest"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  -h|--help|"") usage; exit 0 ;;
+
+  init)
+    slug="${2:-}"
+    [[ -z "$slug" ]] && { echo "Usage: superagent-sparc init <slug>" >&2; exit 1; }
+    DIR="$ROOT/$slug"
+    mkdir -p "$DIR"
+    STATE="$DIR/state.json"
+    if [[ ! -f "$STATE" ]]; then
+      TS=$(now_iso)
+      jq -nc \
+        --arg slug "$slug" --arg ts "$TS" \
+        '{slug:$slug, phase:1, artifacts:[], gate_status:"open", gate_failures:[], createdAt:$ts, updatedAt:$ts}' \
+        > "$STATE"
+    fi
+    echo "$DIR"
+    ;;
+
+  status)
+    DIR=$(active_dir)
+    [[ -z "$DIR" || ! -f "$DIR/state.json" ]] && { echo "no SPARC slug active" >&2; exit 1; }
+    if [[ "${2:-}" == "--json" ]]; then
+      cat "$DIR/state.json"
+    else
+      python3 - "$DIR/state.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1]))
+print(f"slug: {s.get('slug')}")
+print(f"phase: {s.get('phase')}")
+print(f"gate_status: {s.get('gate_status')}")
+failures = s.get('gate_failures', [])
+if failures:
+    last = failures[-1]
+    print(f"last failure: phase {last.get('phase')} — {last.get('reason')}")
+print(f"artifacts: {', '.join(s.get('artifacts', [])) or '(none)'}")
+PY
+    fi
+    ;;
+
+  gate)
+    DIR=$(active_dir)
+    [[ -z "$DIR" || ! -f "$DIR/state.json" ]] && { echo "no SPARC slug active" >&2; exit 1; }
+    STATE="$DIR/state.json"
+    DIR="$DIR" STATE="$STATE" python3 <<'PY'
+import json, os, re
+
+state_path = os.environ["STATE"]
+sdir = os.environ["DIR"]
+s = json.load(open(state_path))
+phase = int(s.get("phase", 1))
+
+failures = []
+
+def read(name):
+    p = os.path.join(sdir, name)
+    if not os.path.exists(p): return None
+    return open(p).read()
+
+if phase == 1:
+    spec = read("spec.md")
+    if not spec:
+        failures.append("spec.md missing")
+    else:
+        acs = re.findall(r"^\s*-\s*(?:\[ \]\s*)?AC[: ]", spec, re.M)
+        if len(acs) < 3:
+            failures.append(f"need >=3 acceptance criteria (got {len(acs)})")
+        if not re.search(r"^\s*-?\s*Constraint", spec, re.M | re.I):
+            failures.append("no Constraint: line found")
+        if not re.search(r"^\s*-?\s*Edge\s*case", spec, re.M | re.I):
+            failures.append("no Edge case: line found")
+elif phase == 2:
+    spec = read("spec.md") or ""
+    pseudo = read("pseudo.md")
+    if not pseudo:
+        failures.append("pseudo.md missing")
+    else:
+        ac_ids = re.findall(r"AC[: ]\s*([\w-]+)", spec)
+        for ac in ac_ids:
+            if ac not in pseudo:
+                failures.append(f"pseudo.md missing AC {ac}")
+        if not re.search(r"^(Error|//\s*error path)", pseudo, re.M | re.I):
+            failures.append("no Error: or // error path line")
+        if not re.search(r"(O\(|complexity[: ])", pseudo, re.I):
+            failures.append("no complexity note (O(...) or complexity:)")
+elif phase == 3:
+    arch = read("arch.md")
+    spec = read("spec.md") or ""
+    if not arch:
+        failures.append("arch.md missing")
+    else:
+        if not re.search(r"\b(function|def|fn|interface|type|class)\s+\w+", arch):
+            failures.append("no typed signatures (function/def/fn/interface/type/class)")
+        constraints = re.findall(r"^\s*-?\s*Constraint[: ]\s*(.+?)$", spec, re.M | re.I)
+        for c in constraints:
+            stub = c.strip().split()[0:3]
+            if stub and not any(w in arch for w in stub):
+                failures.append(f"constraint not addressed: {c.strip()[:60]}")
+elif phase == 4:
+    refine = read("refine.md")
+    spec = read("spec.md") or ""
+    if not refine:
+        failures.append("refine.md missing")
+    else:
+        ac_ids = re.findall(r"AC[: ]\s*([\w-]+)", spec)
+        for ac in ac_ids:
+            if not re.search(rf"\b{re.escape(ac)}\b", refine):
+                failures.append(f"refine.md missing test for AC {ac}")
+        # coverage check
+        threshold_p = os.path.expanduser("~/.superagent/testgen/min-coverage.txt")
+        threshold = 70
+        if os.path.exists(threshold_p):
+            try: threshold = int(open(threshold_p).read().strip())
+            except: pass
+        report_p = os.path.expanduser("~/.superagent/testgen/last-report.json")
+        if os.path.exists(report_p):
+            try:
+                rep = json.load(open(report_p))
+                cov = rep.get("total", {}).get("coverage", 0)
+                if cov < threshold:
+                    failures.append(f"coverage {cov} < threshold {threshold}")
+            except Exception as e:
+                failures.append(f"testgen report unreadable: {e}")
+elif phase == 5:
+    complete = read("complete.md")
+    if not complete:
+        failures.append("complete.md missing")
+    else:
+        if "deploy" not in complete.lower():
+            failures.append("complete.md missing deploy checklist mention")
+
+s["gate_status"] = "passed" if not failures else "failed"
+s["updatedAt"] = open(os.devnull).close() or __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+if failures:
+    import datetime
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    for f in failures:
+        s.setdefault("gate_failures", []).append({"phase": phase, "reason": f, "ts": ts})
+
+json.dump(s, open(state_path, "w"), indent=2)
+
+if failures:
+    print(f"gate FAILED (phase {phase}):")
+    for f in failures:
+        print(f"  - {f}")
+    raise SystemExit(1)
+else:
+    print(f"gate PASSED (phase {phase})")
+PY
+    ;;
+
+  advance)
+    DIR=$(active_dir)
+    [[ -z "$DIR" || ! -f "$DIR/state.json" ]] && { echo "no SPARC slug active" >&2; exit 1; }
+    STATE="$DIR/state.json"
+    STATE="$STATE" python3 <<'PY'
+import json, os, sys, datetime
+state_path = os.environ["STATE"]
+s = json.load(open(state_path))
+if s.get("gate_status") != "passed":
+    sys.stderr.write("gate must pass before advance (run: superagent-sparc gate)\n")
+    sys.exit(2)
+old = int(s.get("phase", 1))
+new = min(5, old + 1)
+s["phase"] = new
+s["gate_status"] = "open"
+s["updatedAt"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+json.dump(s, open(state_path, "w"), indent=2)
+print(f"advanced phase {old} -> {new}")
+PY
+    ;;
+
+  report)
+    DIR=$(active_dir)
+    [[ -z "$DIR" || ! -f "$DIR/state.json" ]] && { echo "no SPARC slug active" >&2; exit 1; }
+    DIR="$DIR" python3 <<'PY'
+import os, re
+sdir = os.environ["DIR"]
+def read(name):
+    p = os.path.join(sdir, name)
+    return open(p).read() if os.path.exists(p) else ""
+
+spec    = read("spec.md")
+pseudo  = read("pseudo.md")
+arch    = read("arch.md")
+refine  = read("refine.md")
+
+ac_lines = re.findall(r"^\s*-\s*(?:\[ \]\s*)?AC[: ]\s*([\w-]+)\s*[-:—]?\s*(.+?)$", spec, re.M)
+print("# SPARC Traceability Matrix")
+print()
+print("| AC | Description | Pseudo | Arch | Test | Status |")
+print("|---|---|---|---|---|---|")
+for ac, desc in ac_lines:
+    p = "✓" if ac in pseudo else "—"
+    a = "✓" if ac in arch else "—"
+    t = "✓" if ac in refine else "—"
+    status = "✓" if (p == "✓" and a == "✓" and t == "✓") else "✗"
+    print(f"| {ac} | {desc[:60]} | {p} | {a} | {t} | {status} |")
+if not ac_lines:
+    print("| (no ACs found in spec.md) | — | — | — | — | — |")
+PY
+    ;;
+
+  *)
+    echo "unknown subcommand: $cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

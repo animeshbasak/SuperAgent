@@ -239,4 +239,9 @@ rules:
     chain: [aidefence]
     complexity: trivial
 
+  - name: sparc
+    signal: "\\b(sparc|methodology|gate|spike|RFC|traceability( matrix)?|start sparc|spec(?:ification)? for|write a PRD|write the PRD)\\b"
+    chain: [sparc]
+    complexity: moderate
+
 build_archetypes: [bug, feature, ui, webgl, refactor, framer-motion]
