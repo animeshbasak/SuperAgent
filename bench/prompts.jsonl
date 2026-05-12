@@ -37,3 +37,8 @@
 # id=25-26: superagent-safety should fire on risky shell strings even when embedded in instructions.
 {"id": 25, "prompt": "rm -rf node_modules and reinstall", "archetype": "risky-action", "expected_chain": ["mempalace-wake", "superagent-safety"]}
 {"id": 26, "prompt": "git push --force origin main please", "archetype": "risky-action", "expected_chain": ["mempalace-wake", "superagent-safety"]}
+{"id": 27, "prompt": "track my daily Anthropic spend and warn me at 90% budget", "archetype": "cost", "expected_chain": ["mempalace-wake", "token-stats", "cost-budget", "auto-fallback"]}
+{"id": 28, "prompt": "show last 5 routes and their outcomes", "archetype": "meta", "expected_chain": ["mempalace-wake", "token-stats"]}
+{"id": 29, "prompt": "promote this routing pattern so we don't have to rediscover it next time", "archetype": "learning", "expected_chain": ["mempalace-wake", "superagent-learn-loop", "learn"]}
+{"id": 30, "prompt": "auto-approve git push --force-with-lease in this repo", "archetype": "permission", "expected_chain": ["mempalace-wake", "superagent-safety"]}
+{"id": 31, "prompt": "downgrade to sonnet when we hit 90% of daily plan", "archetype": "cost", "expected_chain": ["mempalace-wake", "auto-fallback", "cost-budget"]}
