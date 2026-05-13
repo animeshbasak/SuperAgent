@@ -40,6 +40,75 @@ SuperAgent includes these CLI tools. Run them when indicated by the routing tabl
 
 ## Skills Reference
 
+### aidefence
+> Per-prompt injection + PII scanner. Pure regex over 58 shipped patterns (instruction override, role switching, prompt injection, jailbreak, encoding attacks, context manipulation, PII). Wired into UserPromptSubmit hook when enabled. Default off. Triggers on "scan prompt", "prompt injection", "PII scan", "jailbreak", "enable aidefence", "defend prompts".
+
+# aidefence
+
+Wave 2 adds a per-prompt threat scanner that runs at the harness boundary before the model sees the request. It is **default off** — too many dev workflows legitimately mention words like "ignore" or include test fixtures with fake credentials. Opt in with `superagent-aidefence enable` once the patterns suit your workflow.
+
+## When to use
+
+- User says "turn on aidefence" / "scan this prompt" / "is this prompt safe".
+- You suspect a prompt-injection payload in user-provided content (issues, docs, support tickets).
+- After a security incident — review `~/.superagent/aidefence/learned.jsonl` for adaptive misfires.
+
+## Procedure
+
+1. **Inspect current state:**
+   ```bash
+   superagent-aidefence status
+   superagent-aidefence list | head
+   ```
+2. **Enable for the session:**
+   ```bash
+   superagent-aidefence enable
+   ```
+   This drops `~/.superagent/aidefence/enabled`. The `UserPromptSubmit` hook (Wave 1) now calls `scan` on every prompt; critical severity → `deny`, high severity → `ask` (force-confirm), medium/PII → log only.
+3. **Scan ad-hoc:**
+   ```bash
+   superagent-aidefence scan "some prompt to test"
+   ```
+4. **Train it down on a false positive:**
+   ```bash
+   superagent-aidefence feedback <pattern-id> inaccurate
+   ```
+   Repeated inaccurate verdicts decay that pattern's effectiveness via EMA (alpha=0.1). After ~30 events, baseline confidence collapses by ~95%, so the pattern stops blocking common phrasing.
+5. **Disable when shipping safely is preferred over scanning:**
+   ```bash
+   superagent-aidefence disable
+   ```
+
+## Escape hatches
+
+The scanner skips text that:
+
+- Starts with a fenced code block (```\```) — assumed to be code, not a prompt.
+- Starts with `// quote:` — used when the user is *quoting* an attack for analysis.
+
+Both produce `{safe: true, skipped: "escape-hatch"}`.
+
+## Files
+
+- Shipped: `skills/aidefence/patterns.json` (58 patterns, source of truth).
+- Runtime: `~/.superagent/aidefence/patterns.json` (mutable copy for tuning).
+- Feedback: `~/.superagent/aidefence/learned.jsonl` (append-only EMA history).
+- Flag: `~/.superagent/aidefence/enabled` (presence = on).
+
+## Decision policy
+
+| Severity | Hook decision | Behavior |
+|---|---|---|
+| `critical` | `deny` | Block the prompt with stopReason. |
+| `high` | `ask` | Force-confirm in the harness. |
+| `medium` / `pii_*` | log only | Append to learned.jsonl, never block. |
+
+## Ethos
+
+Verify or die. The scanner is a regex gate — fast (<25 ms) and explicit. It cannot catch a determined adversary, but it stops the obvious 80% of injection payloads and PII leaks that would otherwise reach the model. **Default off** because false positives erode trust faster than misses; the user opts in once they trust the corpus on their workflow.
+
+---
+
 ### auto-fallback
 > Cost-aware routing brain — switch from Anthropic API to a free local model when the user is approaching plan limits, hitting 429 bursts, or asks to "save anthropic" / "switch local" / "rate limit" / "approaching limit". Auto-fires on complexity=trivial when budget is tight. Picks the right Ollama / LM Studio / llama.cpp model for the task complexity, runs a 3-step canary first, and switches via `superagent-switch`. State lives in `~/.superagent/`.
 
@@ -175,6 +244,83 @@ When multiple shift signals fire simultaneously, apply in order: **budget > rate
 - Free-claude-code proxy port is **18082** (not 8082).
 - Auto-switch defaults OFF; opt-in for unattended use only.
 - Canary is mandatory before any switch — never skip.
+
+---
+
+### autopilot
+> Unattended pattern-driven loop. Discovers pending tasks (markdown checkboxes + routes-halt + tasks.md), predicts the next action using the Wave 1 patterns store, pauses at 90% budget, and cooperates with ScheduleWakeup for cache-warm iterations. Default off. Triggers on "autopilot", "run unattended", "keep working", "loop on the todo list".
+
+# autopilot
+
+Wave 2 ships an opt-in loop that pairs the Wave 1 pattern store with `ScheduleWakeup` to keep working between user prompts. **Default off** — bounded by maxIterations (≤1000), timeoutMinutes (≤1440), and the auto-downgrade.flag budget gate.
+
+## When to use
+
+- User says "run autopilot", "loop on the open todos", "keep working until done".
+- A long markdown checklist exists and the user wants progress while afk.
+- A previous session left `outcome:halt` records the user wants resumed.
+
+## Procedure
+
+1. **Inspect state:**
+   ```bash
+   superagent-autopilot status
+   superagent-autopilot tasks
+   ```
+2. **Configure bounds (optional):**
+   ```bash
+   superagent-autopilot config --max-iterations 100
+   superagent-autopilot config --timeout-minutes 60
+   ```
+   maxIterations clamps to [1, 1000]; timeoutMinutes clamps to [1, 1440].
+3. **Enable:**
+   ```bash
+   superagent-autopilot enable
+   ```
+4. **Run an iteration:**
+   ```bash
+   superagent-autopilot iter
+   ```
+   Emits a JSON envelope with the predict result and a `ScheduleWakeup` directive at `delaySeconds=270` (under Anthropic's 300s prompt-cache TTL — tunable via `SUPERAGENT_CACHE_TTL_S`).
+5. **The host skill** (or you, when chained) is responsible for calling the actual `ScheduleWakeup` tool with the emitted delay. autopilot does not run a daemon; it cooperates with the harness.
+6. **Disable when done:**
+   ```bash
+   superagent-autopilot disable
+   ```
+
+## Budget gate
+
+Before predict runs, `iter` checks for `~/.superagent/auto-downgrade.flag`. If present, output:
+
+```json
+{"paused": true, "reason": "budget"}
+```
+
+This resolves the autopilot/auto-fallback ping-pong. Precedence (from v3 spec §9): **budget > rate-limit > preference**. The flag clears automatically when `superagent-cost-alerts` sees usage drop back below the threshold (e.g., 5h reset window).
+
+## Task discovery sources
+
+In order:
+
+1. **Markdown checkboxes** in cwd — `^[ -*]\s*\[ \]` lines from any `.md` file.
+2. **routes.jsonl halts** — records with `outcome:halt` from `~/.superagent/brain/routes.jsonl`.
+3. **tasks.md in cwd** — line-delimited tasks (comments with `#` ignored).
+
+## Predict logic
+
+For each pending task × each pattern in `patterns.jsonl`:
+
+- `score = signal-token overlap × successRate`
+- Best pattern wins. If `successRate > 0.7`: action `execute-pattern`. Otherwise: action `fallback` with the highest-priority pending task as target. Empty pending list: action `idle`.
+
+## Files
+
+- State: `~/.superagent/autopilot/state.json`
+- Wakeup directive: emitted to stdout — caller invokes `ScheduleWakeup` tool.
+
+## Ethos
+
+Memory compounds. Pattern-driven prediction is only as good as the patterns store; the Stop hook (Wave 1) feeds it. Keep the budget gate in front of every iteration — that's the difference between a useful autopilot and a runaway one.
 
 ---
 
@@ -518,6 +664,103 @@ Markdown report ranked by severity (Critical / High / Medium / Low):
 - All 4 sections executed (OWASP / STRIDE / secrets / supply-chain).
 - At minimum: "no findings" for clean categories (not silent).
 - Verdict is one of the three values.
+
+---
+
+### diff-risk
+> Per-diff impact + reviewer suggestion. Classifier (feature/bugfix/refactor/docs/test/config/style) + IMPACT_KEYWORDS score → low/medium/high/critical + 5 risk-factor booleans (high churn, security paths, large diff, cross-module, DB migration) + CODEOWNERS-driven reviewer recommendation. Pure git+file parsing, no GitHub API. Triggers on "diff risk", "impact score", "blast radius", "reviewer suggest", "jujutsu" (legacy alias), "code owners". Renamed from `jujutsu` to avoid collision with Jujutsu VCS.
+
+# diff-risk
+
+Wave 3 ships a per-diff scoring bin that augments `review` and `ship`. Diff-risk reads `git diff` only; no GitHub API call. Output is a markdown report cached for downstream skills.
+
+## When to use
+
+- About to push a branch and want a blast-radius read.
+- `review` skill needs context on what kind of change it's reviewing.
+- Picking reviewers from CODEOWNERS without opening the GitHub UI.
+- A legacy `/jujutsu` invocation — that's the same skill (deprecation alias kept).
+
+## Procedure
+
+1. **One-shot report** (most common):
+   ```bash
+   superagent-diff-risk report --base origin/main
+   ```
+   Composes classifier + impact + risk + reviewers and caches `~/.superagent/diff/last.json`.
+
+2. **Drill into a single dimension:**
+   ```bash
+   superagent-diff-risk classify --commit-msg "$(git log -1 --pretty=%s)" --files "$(git diff --name-only --cached | paste -sd,)"
+   superagent-diff-risk impact --branch "$(git rev-parse --abbrev-ref HEAD)"
+   superagent-diff-risk reviewers --files "$(git diff --name-only HEAD~1...HEAD | paste -sd,)"
+   ```
+
+3. **JSON mode** for `ship` / `review` integration:
+   ```bash
+   superagent-diff-risk report --base origin/main --json
+   ```
+
+## Classifier
+
+Verbatim regex map from spec §8.3:
+
+| Type | Patterns |
+|---|---|
+| feature  | `^feat`, `add.*feature`, `implement`, `new.*functionality` |
+| bugfix   | `^fix`, `bug`, `patch`, `resolve.*issue`, `hotfix` |
+| refactor | `^refactor`, `restructure`, `reorganize`, `cleanup`, `rename` |
+| docs     | `^docs?`, `documentation`, `readme`, `\.md$` |
+| test     | `^test`, `spec`, `\.test\.[jt]sx?$`, `__tests__` |
+| config   | `^config`, `\.config\.`, `package\.json`, `\.env` |
+| style    | `^style`, `format`, `lint`, `prettier`, `eslint` |
+
+Multi-label scoring: every type whose patterns match commit msg or file paths contributes a count. Primary = highest count; secondary = the rest (alphabetical tiebreak for determinism).
+
+## Impact score
+
+`IMPACT_KEYWORDS` from spec:
+
+| Keyword | Score |
+|---|---|
+| security | 3 |
+| auth | 3 |
+| payment | 3 |
+| database | 2 |
+| api | 2 |
+| core | 2 |
+| util | 1 |
+| helper | 1 |
+| test, mock, fixture | 0 |
+
+Sum scores across branch name + file paths. Map to `low (0)`, `medium (≥1)`, `high (≥3)`, `critical (≥5)`.
+
+## Risk factors
+
+Boolean flags appended to the report:
+
+1. **high_churn_files** — files with `git log --oneline <file> | wc -l > 20`.
+2. **security_paths** — paths matching `auth/`, `crypto/`, `permissions/`, `.env`.
+3. **large_diff** — total lines added+deleted > 500.
+4. **cross_module** — ≥3 top-level dirs touched.
+5. **db_migration** — `migrations/` paths or `.sql` files.
+
+## Reviewers
+
+Reads `.github/CODEOWNERS` → `docs/CODEOWNERS` → root `CODEOWNERS` (first found wins). Each `<glob> @owner1 @owner2` line is matched against changed paths via `fnmatch`. Returns the union of owners. No GitHub API call.
+
+## Integration
+
+- `review` skill: calls `diff-risk report` before its 6-point checklist; folds the classification into the verdict.
+- `ship` skill: calls `diff-risk report --json` before push. When `impact == "high"` or `"critical"`, the ship procedure force-confirms.
+
+## Legacy alias
+
+`/jujutsu` is kept as a deprecation alias. Both slash commands route here. The alias prints a one-line note to stderr but still runs.
+
+## Ethos
+
+Verify or die. The score is not a quality judgment — it's a blast-radius prediction. A 5/5 critical score on a database migration is not bad; it's the signal to ask whoever owns the DB before push. Pure file parsing keeps this fast and offline.
 
 ---
 
@@ -1059,6 +1302,72 @@ Learnings file exists at `~/.superagent/learnings/<sha256-12-of-cwd>.jsonl` afte
 
 ---
 
+### observability
+> JSONL spans + metrics for SuperAgent. Read the trace tree of any session, aggregate counter/gauge/histogram metrics with p50/p95/p99, and flag anomalies via rolling mean + 2σ. Triggers on "show the trace", "metrics for today", "what's slow", "anomaly", "p95 latency".
+
+# observability
+
+Wave 2 ships pure-JSONL observability — no OTel libraries, no remote backend. Hooks emit spans on every tool call and metrics on every token-bearing event. Files live under `~/.superagent/obs/` and rotate daily.
+
+## When to use
+
+- User asks "why is X slow" / "show me the trace for last route" / "what was the bottleneck".
+- User asks "how many tokens did I burn today" / "are there any anomalies in latency".
+- After a session you want to attribute timing across subagents.
+
+## Procedure
+
+1. **Inspect a single trace.** Pass the traceId you care about:
+   ```bash
+   superagent-trace t-abc12345
+   ```
+   Output is an ASCII parent-child tree with per-span duration. Bottlenecks (duration ≥ p95 of the op AND > 2× mean) are flagged `(bottleneck)`.
+2. **Aggregate metrics over a range.**
+   ```bash
+   superagent-metrics today
+   superagent-metrics week --json | jq .
+   ```
+   Counters → SUM, gauges → LAST value (insertion-order tiebreak), histograms → p50/p95/p99. Anomaly flag: rolling mean + 2σ over the last 100 samples.
+3. **Find a traceId.** The latest span's traceId is the most recent route:
+   ```bash
+   tail -n 1 ~/.superagent/obs/spans.jsonl | jq -r .traceId
+   ```
+4. **Rotate manually if needed** (Stop hook does this daily already):
+   ```bash
+   superagent-obs-rotate
+   ```
+
+## Files
+
+- Active: `~/.superagent/obs/spans.jsonl` and `metrics.jsonl`.
+- Rotated: `spans.<YYYYMMDD>.jsonl` and `metrics.<YYYYMMDD>.jsonl` (>30 days = pruned).
+- Marker: `~/.superagent/obs/.last-rotate-<YYYYMMDD>` (presence = already rotated today).
+
+## Six canonical metric names
+
+Lifted from the v3 design spec §7.3 — when emitting, prefer these names so dashboards stay consistent:
+
+- `agent_task_duration_seconds` (histogram)
+- `agent_token_usage` (histogram)
+- `agent_active_count` (gauge)
+- `agent_error_rate` (counter)
+- `swarm_span_duration_ms` (histogram)
+- `memory_operations_total` (counter)
+
+## Trace ID propagation
+
+The `superagent` skill sets `SA_TRACE_ID` at chain start. Downstream bins inherit it through the environment; if unset, the tracker.sh hook generates a fresh root span id. Cross-session boundary = new traceId. Don't try to span across SessionStart.
+
+## Performance budget
+
+Span/metric writes are append-only JSONL via `jq -nc`. Cost is ~1 ms per write; never on the user's critical path. Stop hook rotates once per day via the `.last-rotate-<YYYYMMDD>` marker so the active files stay small.
+
+## Ethos
+
+Verify or die. The trace tree is the receipt — every chain that ran left a structured record. Use it when a "fast" route felt slow; the bottleneck flag will name the offending op before you debug.
+
+---
+
 ### office-hours
 > YC-style office hours intake. Six forcing product questions — customer, wedge, why-now, 10x, evidence, kill-switch. Output is a filled answer doc saved to docs/office-hours/.
 
@@ -1412,6 +1721,28 @@ Filled-in versions of the 6 sections above, as a markdown doc.
 ## Inputs
 - `$ARGUMENTS` — optional base branch name (default: `main`).
 
+## Step 0 — diff-risk pre-check (Wave 3)
+
+Before running the 6-point checklist, run `superagent-diff-risk` to ground the review in objective signal:
+
+```bash
+superagent-diff-risk report --base "${ARGUMENTS:-origin/main}" --json
+```
+
+Fold the output into the review verdict:
+
+- `impact: critical | high` → call out blast radius in the verdict. Recommend additional reviewers from `reviewers.owners`. Surface every `risk_factors[]` flag in the review summary.
+- `classification.primary: feature` and `impact: low` → standard review proceeds.
+- `db_migration` or `security_paths` flag → escalate to `security-architect` agent before LGTM.
+
+Also consult cached coverage (Wave 3):
+
+```bash
+superagent-testgen status --json
+```
+
+If `verdict: BELOW THRESHOLD`, include the coverage delta in the review output but do not gate-block on it (project teams own the threshold).
+
 ## The 6-Point Checklist
 
 For each bullet, produce explicit findings with file:line references.
@@ -1569,6 +1900,15 @@ Produce markdown report:
 - Invoke the `verification-before-completion` skill (superpowers:verification-before-completion). Require evidence of green tests before continuing.
 - If verification fails: abort ship, do not push.
 
+### 12b. Diff-risk pre-push gate (Wave 3)
+- Run `superagent-diff-risk report --base <base> --json` and parse the impact level.
+- If `impactReport.impact == "high"` or `"critical"`, force-confirm with the user before pushing:
+  - Print the report markdown (without --json) so they can see the blast radius.
+  - Surface `reviewers.owners` from the cached CODEOWNERS lookup as recommended additional reviewers.
+  - Wait for explicit user approval to proceed. `low` and `medium` proceed without prompting.
+- Cached report lives at `~/.superagent/diff/last.json`; later steps may read it (e.g., PR body).
+- Also consult `superagent-testgen status --json`. If `verdict == "BELOW THRESHOLD"` and the project enforces it (look for `~/.superagent/testgen/enforce` flag), refuse to push. Default behavior is warn-only.
+
 ### 13. Push
 - `git push -u origin <current-branch>`.
 - If push fails (non-fast-forward, auth, hook rejection): surface remote error verbatim, do not retry with `--force`.
@@ -1642,6 +1982,73 @@ Ship refuses (or aborts mid-flight) when any of the following hold:
 9. `verification-before-completion` refuses to confirm.
 
 In every abort case: leave the repo in a clean state (no half-written CHANGELOG, no partial commits of ship machinery), surface the exact reason, and exit non-zero.
+
+---
+
+### sparc
+> 5-phase gate-enforced pipeline (Specification → Pseudocode → Architecture → Refinement → Completion). Boolean gates per phase; refuses to advance until the current gate passes. Use when complexity warrants methodology, when a feature needs an audit trail (ACs → tests → code), or when the user asks for a PRD/spec/RFC. Triggers on "sparc", "spec", "PRD", "methodology", "gate", "spike", "RFC", "traceability".
+
+# sparc
+
+Wave 3 adds a thin orchestrator that chains existing SuperAgent skills with hard boolean gate checks. SPARC is **opt-in per feature** — `/sparc init <slug>` starts a session; it never auto-fires.
+
+## When to use
+
+- The user describes a feature that needs an audit trail.
+- A PR will touch security-sensitive or cross-module code.
+- The user says "spec this", "write a PRD", "I want a methodology", "traceability matrix".
+- You want a gate that refuses to ship before all ACs have passing tests.
+
+## The 5 phases
+
+| # | Phase | Output artifact | Gate (boolean) | SA skills used |
+|---|---|---|---|---|
+| 1 | Specification | `spec.md` | ≥3 ACs, ≥1 Constraint, ≥1 Edge case | `agent-skills:spec-driven-development`, `office-hours` |
+| 2 | Pseudocode | `pseudo.md` | covers every AC, error paths explicit, complexity notes per algo | `agent-skills:planning-and-task-breakdown` |
+| 3 | Architecture | `arch.md` | typed signatures, every Constraint addressed | `architect` agent (Wave 2), `plan-eng-review` |
+| 4 | Refinement | `refine.md` | every AC has a passing test, coverage ≥ threshold | `agent-skills:test-driven-development`, `tester` agent, `review` |
+| 5 | Completion | `complete.md` + ADRs | deploy checklist verified, traceability matrix complete | `agent-skills:documentation-and-adrs`, `verification-before-completion`, `ship` |
+
+**Gates are boolean — pass or fail.** No 0.0-1.0 quality scores. Easier to verify objectively.
+
+## Procedure
+
+1. **Init the feature:**
+   ```bash
+   superagent-sparc init feat-darkmode-toggle
+   ```
+2. **Write the artifact for the current phase** into the printed directory (e.g. `~/.superagent/sparc/feat-darkmode-toggle/spec.md`). Use the AC format `- AC: <id> — <description>`; constraint lines start with `Constraint:`; edge case lines with `Edge case:`.
+3. **Run the gate:**
+   ```bash
+   superagent-sparc gate
+   ```
+   On failure, the reason is appended to `gate_failures[]` in `state.json`. Fix and re-run.
+4. **Advance only after gate passes:**
+   ```bash
+   superagent-sparc advance
+   ```
+5. **At any time, inspect state or matrix:**
+   ```bash
+   superagent-sparc status
+   superagent-sparc report
+   ```
+
+## Files
+
+- State: `~/.superagent/sparc/<slug>/state.json`
+- Artifacts: `~/.superagent/sparc/<slug>/{spec,pseudo,arch,refine,complete}.md`
+- Active slug: `SUPERAGENT_SPARC_SLUG` env var; else most-recently-updated dir.
+
+## Hand-off rules
+
+- Phase 3 dispatches to the `architect` agent (Wave 2 specialist).
+- Phase 4 dispatches to the `tester` agent + runs `review` skill.
+- Phase 5 dispatches to `ship` skill.
+- Each phase's gate ensures the artifact exists in the expected shape before hand-off.
+
+## Ethos
+
+Verify or die. Boolean gates beat fake-precision scores because they force the LLM (and the user) to name a concrete failure mode rather than negotiate over a fuzzy number. The traceability matrix is the receipt — every AC links to a pseudo line, an arch entry, a test, and a code reference. If any column is empty, the feature isn't done.
 
 ---
 
@@ -2032,6 +2439,59 @@ skill with `$ARGUMENTS` so users can type:
 /superagent-switch status
 /superagent-switch auto on
 ```
+
+---
+
+### testgen
+> Coverage gap detection + test scaffolding. Calls the project's own coverage tool (jest/vitest/pytest/tarpaulin/go-cover), normalizes the JSON output, ranks files by gap × LOC, and emits a markdown skeleton naming the tests to write — never the bodies. Triggers on "coverage", "untested", "test coverage", "testgen", "tdd gap", "scaffold tests", "coverage gap".
+
+# testgen
+
+Wave 3 ships an opt-in coverage adapter that augments TDD. Testgen is the inspector; the `tester` agent (Wave 2) and `agent-skills:test-driven-development` are the implementers. Testgen **never writes test bodies**.
+
+## When to use
+
+- The user asks "where's our coverage weakest" / "scaffold tests for X" / "coverage gap report".
+- About to refactor untested code — generate the lock-down test list first.
+- `ship` skill consults testgen to refuse a regression in coverage before push.
+
+## Procedure
+
+1. **Scan** — runs the project's coverage tool and caches a normalized report:
+   ```bash
+   superagent-testgen scan                                  # auto-detect format
+   superagent-testgen scan --fixture coverage-summary.json  # bypass tool spawn
+   ```
+   Supported formats: jest (`coverage-summary.json`), pytest (`coverage.json`), with the same shape for vitest. Other tools (tarpaulin, go-cover) can be added by extending the format detector.
+2. **Rank** — list the largest gaps by `gap × LOC`:
+   ```bash
+   superagent-testgen gap --top 5
+   ```
+3. **Scaffold** for a specific file — emit a markdown skeleton:
+   ```bash
+   superagent-testgen suggest src/auth.ts
+   ```
+   Output includes uncovered line ranges (collapsed into runs like `L42-50`) and named symbols extracted from the source file. **No test bodies are written** — the skeleton names what to test.
+4. **Status** — current coverage vs threshold:
+   ```bash
+   superagent-testgen status         # human
+   superagent-testgen status --json  # for ship/review to consult
+   ```
+
+## Files
+
+- Normalized report cache: `~/.superagent/testgen/last-report.json`.
+- Project threshold: `~/.superagent/testgen/min-coverage.txt` (default 70).
+- User-supplied coverage command override: `~/.superagent/testgen/cov-cmd.txt`.
+
+## Hand-off
+
+- For each test in the suggested skeleton, dispatch the `tester` agent (Wave 2) to write the body. The `tester` agent in turn invokes `agent-skills:test-driven-development`.
+- Before `ship`, run `superagent-testgen status --json` and refuse to ship if `verdict == "BELOW THRESHOLD"` and the project enforces it.
+
+## Ethos
+
+Testgen lists the work; it doesn't do the work. A test the LLM wrote unprompted by a coverage gap is worth less than a test driven by a named hole in the suite. Coverage thresholds are per-project, never global — legacy code at 50% is fine if the team is at 80% for new code.
 
 ---
 

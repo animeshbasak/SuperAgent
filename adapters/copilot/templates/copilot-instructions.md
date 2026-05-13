@@ -13,6 +13,21 @@ When a task matches these patterns, follow the corresponding skill chain:
 
 ## Skills Summary
 
+### aidefence
+> Per-prompt injection + PII scanner. Pure regex over 58 shipped patterns (instruction override, role switching, prompt injection, jailbreak, encoding attacks, context manipulation, PII). Wired into UserPromptSubmit hook when enabled. Default off. Triggers on "scan prompt", "prompt injection", "PII scan", "jailbreak", "enable aidefence", "defend prompts".
+
+# aidefence
+
+Wave 2 adds a per-prompt threat scanner that runs at the harness boundary before the model sees the request. It is **default off** — too many dev workflows legitimately mention words like "ignore" or include test fixtures with fake credentials. Opt in with `superagent-aidefence enable` once the patterns suit your workflow.
+
+## When to use
+
+- User says "turn on aidefence" / "scan this prompt" / "is this prompt safe".
+- You suspect a prompt-injection payload in user-provided content (
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
 ### auto-fallback
 > Cost-aware routing brain — switch from Anthropic API to a free local model when the user is approaching plan limits, hitting 429 bursts, or asks to "save anthropic" / "switch local" / "rate limit" / "approaching limit". Auto-fires on complexity=trivial when budget is tight. Picks the right Ollama / LM Studio / llama.cpp model for the task complexity, runs a 3-step canary first, and switches via `superagent-switch`. State lives in `~/.superagent/`.
 
@@ -27,6 +42,23 @@ The cost-aware routing brain. Decides when to flip Claude Code from Anthropic AP
 2. **Budget signal** — `superagent-cost today --json`
    - `pct_of_plan` — fraction of plan limit consumed (0..1)
    - `time_to_5h_reset_minutes` — minutes until rolling 5h limit r
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### autopilot
+> Unattended pattern-driven loop. Discovers pending tasks (markdown checkboxes + routes-halt + tasks.md), predicts the next action using the Wave 1 patterns store, pauses at 90% budget, and cooperates with ScheduleWakeup for cache-warm iterations. Default off. Triggers on "autopilot", "run unattended", "keep working", "loop on the todo list".
+
+# autopilot
+
+Wave 2 ships an opt-in loop that pairs the Wave 1 pattern store with `ScheduleWakeup` to keep working between user prompts. **Default off** — bounded by maxIterations (≤1000), timeoutMinutes (≤1440), and the auto-downgrade.flag budget gate.
+
+## When to use
+
+- User says "run autopilot", "loop on the open todos", "keep working until done".
+- A long markdown checklist exists and the user wants progress while afk.
+- A previous session left `outcome:halt` records the user wants resumed.
+
 
 *(Full instructions available in SuperAgent skills directory)*
 
@@ -81,6 +113,25 @@ Wave 1 introduced per-task USD attribution and budget enforcement. The existing 
 
 ### 1. OWASP Top-10 scan
 For each of: Broken Access Control, Cryptographic Failures, Injection, Insecure Design, Security Misconfiguration, Vulnerable/Outdated Components, 
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### diff-risk
+> Per-diff impact + reviewer suggestion. Classifier (feature/bugfix/refactor/docs/test/config/style) + IMPACT_KEYWORDS score → low/medium/high/critical + 5 risk-factor booleans (high churn, security paths, large diff, cross-module, DB migration) + CODEOWNERS-driven reviewer recommendation. Pure git+file parsing, no GitHub API. Triggers on "diff risk", "impact score", "blast radius", "reviewer suggest", "jujutsu" (legacy alias), "code owners". Renamed from `jujutsu` to avoid collision with Jujutsu VCS.
+
+# diff-risk
+
+Wave 3 ships a per-diff scoring bin that augments `review` and `ship`. Diff-risk reads `git diff` only; no GitHub API call. Output is a markdown report cached for downstream skills.
+
+## When to use
+
+- About to push a branch and want a blast-radius read.
+- `review` skill needs context on what kind of change it's reviewing.
+- Picking reviewers from CODEOWNERS without opening the GitHub UI.
+- A legacy `/jujutsu` invocation — that's the same skill (deprecation alias kept).
+
+## Procedure
 
 *(Full instructions available in SuperAgent skills directory)*
 
@@ -162,6 +213,24 @@ Wire Claude Code's outbound API calls through the `free-claude-code` proxy so th
 **NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST.**
 
 If you don't know WHY the bug happens, your fix is guesswork. Guesswork fixes create 
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### observability
+> JSONL spans + metrics for SuperAgent. Read the trace tree of any session, aggregate counter/gauge/histogram metrics with p50/p95/p99, and flag anomalies via rolling mean + 2σ. Triggers on "show the trace", "metrics for today", "what's slow", "anomaly", "p95 latency".
+
+# observability
+
+Wave 2 ships pure-JSONL observability — no OTel libraries, no remote backend. Hooks emit spans on every tool call and metrics on every token-bearing event. Files live under `~/.superagent/obs/` and rotate daily.
+
+## When to use
+
+- User asks "why is X slow" / "show me the trace for last route" / "what was the bottleneck".
+- User asks "how many tokens did I burn today" / "are there any anomalies in latency".
+- After a session you want to attribute timing across subagents.
+
+## Proc
 
 *(Full instructions available in SuperAgent skills directory)*
 
@@ -264,12 +333,12 @@ For each dimension: **Rate 0-10. If not 10, state what a 10 would look like, the
 ## Inputs
 - `$ARGUMENTS` — optional base branch name (default: `main`).
 
-## The 6-Point Checklist
+## Step 0 — diff-risk pre-check (Wave 3)
 
-For each bullet, produce explicit findings with file:line references.
+Before running the 6-point checklist, run `superagent-diff-risk` to ground the review in objective signal:
 
-### 1. Scope Drift
-- Compare diff against the plan. Anything here NOT in th
+```bash
+superagent-dif
 
 *(Full instructions available in SuperAgent skills directory)*
 
@@ -294,6 +363,23 @@ For each bullet, produce explicit findings with file:line references.
 ## The 20 Steps
 
 ### 1. Detect platf
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### sparc
+> 5-phase gate-enforced pipeline (Specification → Pseudocode → Architecture → Refinement → Completion). Boolean gates per phase; refuses to advance until the current gate passes. Use when complexity warrants methodology, when a feature needs an audit trail (ACs → tests → code), or when the user asks for a PRD/spec/RFC. Triggers on "sparc", "spec", "PRD", "methodology", "gate", "spike", "RFC", "traceability".
+
+# sparc
+
+Wave 3 adds a thin orchestrator that chains existing SuperAgent skills with hard boolean gate checks. SPARC is **opt-in per feature** — `/sparc init <slug>` starts a session; it never auto-fires.
+
+## When to use
+
+- The user describes a feature that needs an audit trail.
+- A PR will touch security-sensitive or cross-module code.
+- The user says "spec this", "write a PRD", "I want a methodology", "traceability matrix".
+- You want a gate that refuses to ship before all ACs have passing tes
 
 *(Full instructions available in SuperAgent skills directory)*
 
@@ -345,6 +431,24 @@ back to the user in a consistent shape.
   `canary`, `status`, `auto`).
 - User said "list local models", "switch to qwen3", "switch back to
   Anthropic", "what backend am I
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### testgen
+> Coverage gap detection + test scaffolding. Calls the project's own coverage tool (jest/vitest/pytest/tarpaulin/go-cover), normalizes the JSON output, ranks files by gap × LOC, and emits a markdown skeleton naming the tests to write — never the bodies. Triggers on "coverage", "untested", "test coverage", "testgen", "tdd gap", "scaffold tests", "coverage gap".
+
+# testgen
+
+Wave 3 ships an opt-in coverage adapter that augments TDD. Testgen is the inspector; the `tester` agent (Wave 2) and `agent-skills:test-driven-development` are the implementers. Testgen **never writes test bodies**.
+
+## When to use
+
+- The user asks "where's our coverage weakest" / "scaffold tests for X" / "coverage gap report".
+- About to refactor untested code — generate the lock-down test list first.
+- `ship` skill consults testgen to refuse a regression in coverage before push.
+
+##
 
 *(Full instructions available in SuperAgent skills directory)*
 
