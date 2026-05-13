@@ -96,6 +96,15 @@ argument-hint: "<optional: base branch, default main>"
 - Invoke the `verification-before-completion` skill (superpowers:verification-before-completion). Require evidence of green tests before continuing.
 - If verification fails: abort ship, do not push.
 
+### 12b. Diff-risk pre-push gate (Wave 3)
+- Run `superagent-diff-risk report --base <base> --json` and parse the impact level.
+- If `impactReport.impact == "high"` or `"critical"`, force-confirm with the user before pushing:
+  - Print the report markdown (without --json) so they can see the blast radius.
+  - Surface `reviewers.owners` from the cached CODEOWNERS lookup as recommended additional reviewers.
+  - Wait for explicit user approval to proceed. `low` and `medium` proceed without prompting.
+- Cached report lives at `~/.superagent/diff/last.json`; later steps may read it (e.g., PR body).
+- Also consult `superagent-testgen status --json`. If `verdict == "BELOW THRESHOLD"` and the project enforces it (look for `~/.superagent/testgen/enforce` flag), refuse to push. Default behavior is warn-only.
+
 ### 13. Push
 - `git push -u origin <current-branch>`.
 - If push fails (non-fast-forward, auth, hook rejection): surface remote error verbatim, do not retry with `--force`.

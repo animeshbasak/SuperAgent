@@ -4,7 +4,7 @@
 
 ### Stop paying for tokens your AI burned re-reading your codebase.
 
-**One brain. Seven IDEs. 26 skills. 37/37 routing accuracy. Self-improving. Per-prompt defense. Free local fallback.**
+**One brain. Seven IDEs. 29 skills. 42/42 routing accuracy. Self-improving. Per-prompt defense. Methodology-gated. Free local fallback.**
 
 <a href="https://github.com/animeshbasak/SuperAgent/raw/main/docs/media/superagent-v2.4-reel.mp4">
   <img src="docs/media/superagent-v2.2-reel-poster.png" alt="SuperAgent v2.4 — Wave 1 reel (click to play)" width="820" />
@@ -21,12 +21,28 @@ bash SuperAgent/install-universal.sh
 [![Platforms](https://img.shields.io/badge/platforms-8-blue)](#works-with-every-ai-coding-tool-you-use)
 [![Bench](https://img.shields.io/badge/bench-31%2F31%20PASS-brightgreen)](#proof)
 [![Skills](https://img.shields.io/badge/skills-23-purple)](#21-skills-auto-routed)
-[![Wave 2](https://img.shields.io/badge/v2.5-Wave_2_Autonomous-blueviolet)](#whats-new-in-v250--wave-2-autonomous--safe)
+[![Wave 3](https://img.shields.io/badge/v2.6-Wave_3_Methodology-blueviolet)](#whats-new-in-v260--wave-3-methodology--quality)
 [![Token Savings](https://img.shields.io/badge/token_savings-95%25-brightgreen)](#the-receipt-share-your-savings)
 [![Free LLM Fallback](https://img.shields.io/badge/free_LLM-fallback-orange)](#act-2--the-system)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
+
+---
+
+## What's new in v2.6.0 — Wave 3: Methodology & Quality
+
+> **The brain now enforces methodology, hunts uncovered behavior, and rates every diff before push.** Three foundations on top of v2.5: a 5-phase gate-enforced pipeline (SPARC), coverage gap detection with scaffolding (Testgen), and per-diff impact + reviewer recommendation (Diff-risk).
+
+| Pillar | What it does | Where it lives |
+|---|---|---|
+| 🎯 **SPARC** | 5 phases — Spec → Pseudo → Arch → Refine → Complete. Boolean gates (no 0.0-1.0 fake-precision scores). Traceability matrix links every AC to a pseudo line, an arch entry, a test, and a status. Opt-in per feature. | `bin/superagent-sparc`, [skill](skills/sparc/SKILL.md) |
+| 🧪 **Testgen** | Coverage adapter (jest/pytest). Gap detection ranked by `gap × LOC`. `suggest <file>` emits a markdown skeleton with uncovered ranges and named symbols — never writes test bodies. Per-project threshold. | `bin/superagent-testgen`, [skill](skills/testgen/SKILL.md) |
+| 🛡 **Diff-risk** | 7-type classifier + IMPACT_KEYWORDS score + 5 risk factors + CODEOWNERS reviewer recommendation. Pure git+file parsing — no GitHub API. Cached for `ship`/`review`. Renamed from `jujutsu` (legacy alias kept). | `bin/superagent-diff-risk`, [skill](skills/diff-risk/SKILL.md) |
+
+**Receipts**: 22 sequential tasks, 8 commits on `wave-3-methodology`, 16 new test scripts, 42/42 bench prompts at AVG 1.000, diff-risk corpus 20/20 primary classification.
+
+`review` skill now runs `diff-risk report` before its 6-point checklist. `ship` skill force-confirms before push when impact is `high` or `critical`.
 
 ---
 

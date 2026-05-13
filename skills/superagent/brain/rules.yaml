@@ -245,7 +245,7 @@ rules:
     complexity: moderate
 
   - name: testgen
-    signal: "\\b(coverage|untested|testgen|tdd gap|scaffold tests?|coverage gap|test coverage)\\b"
+    signal: "\\b(coverage|untested|uncovered|testgen|tdd gap|scaffold tests?|coverage gap|test coverage|suggest tests?)\\b"
     chain: [testgen]
     complexity: trivial
 

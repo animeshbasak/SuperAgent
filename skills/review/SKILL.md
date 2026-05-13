@@ -16,6 +16,28 @@ argument-hint: "<base branch, default: main>"
 ## Inputs
 - `$ARGUMENTS` — optional base branch name (default: `main`).
 
+## Step 0 — diff-risk pre-check (Wave 3)
+
+Before running the 6-point checklist, run `superagent-diff-risk` to ground the review in objective signal:
+
+```bash
+superagent-diff-risk report --base "${ARGUMENTS:-origin/main}" --json
+```
+
+Fold the output into the review verdict:
+
+- `impact: critical | high` → call out blast radius in the verdict. Recommend additional reviewers from `reviewers.owners`. Surface every `risk_factors[]` flag in the review summary.
+- `classification.primary: feature` and `impact: low` → standard review proceeds.
+- `db_migration` or `security_paths` flag → escalate to `security-architect` agent before LGTM.
+
+Also consult cached coverage (Wave 3):
+
+```bash
+superagent-testgen status --json
+```
+
+If `verdict: BELOW THRESHOLD`, include the coverage delta in the review output but do not gate-block on it (project teams own the threshold).
+
 ## The 6-Point Checklist
 
 For each bullet, produce explicit findings with file:line references.

@@ -416,6 +416,13 @@ JSON
 fi
 date -Iseconds > "$HOME/.superagent/.wave-2.installed" 2>/dev/null || true
 ok "Wave 2 state scaffolded (aidefence + obs + autopilot)"
+
+# ── Wave 3: state scaffold for sparc + testgen + diff ──────────────────────
+mkdir -p "$HOME/.superagent/sparc" "$HOME/.superagent/testgen" "$HOME/.superagent/diff" 2>/dev/null || true
+[[ -f "$HOME/.superagent/testgen/min-coverage.txt" ]] || echo 70 > "$HOME/.superagent/testgen/min-coverage.txt"
+[[ -f "$HOME/.superagent/testgen/cov-cmd.txt" ]] || : > "$HOME/.superagent/testgen/cov-cmd.txt"
+date -Iseconds > "$HOME/.superagent/.wave-3.installed" 2>/dev/null || true
+ok "Wave 3 state scaffolded (sparc + testgen + diff)"
 echo ""
 
 # ── Step 9c: Install .mcp.json baseline ──────────────────────────────────────

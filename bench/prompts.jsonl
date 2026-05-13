@@ -48,3 +48,8 @@
 {"id": 35, "prompt": "run autopilot on the open todo list and stop when done", "archetype": "autopilot", "expected_chain": ["mempalace-wake", "autopilot"]}
 {"id": 36, "prompt": "p95 latency for agent_token_usage this week", "archetype": "obs", "expected_chain": ["mempalace-wake", "observability"]}
 {"id": 37, "prompt": "design the API for the comments service", "archetype": "architect", "expected_chain": ["mempalace-wake", "brainstorming", "ui-ux-pro-max", "agent:architect", "verification-before-completion"]}
+{"id": 38, "prompt": "start sparc for the new comments feature", "archetype": "sparc", "expected_chain": ["mempalace-wake", "sparc"]}
+{"id": 39, "prompt": "scan coverage and tell me where the gaps are", "archetype": "testgen", "expected_chain": ["mempalace-wake", "testgen"]}
+{"id": 40, "prompt": "analyze the risk of this diff before push", "archetype": "diff-risk", "expected_chain": ["mempalace-wake", "diff-risk"]}
+{"id": 41, "prompt": "show me the traceability matrix for feat-auth", "archetype": "sparc", "expected_chain": ["mempalace-wake", "sparc"]}
+{"id": 42, "prompt": "suggest tests for the uncovered branches in src/auth.ts", "archetype": "testgen", "expected_chain": ["mempalace-wake", "testgen"]}

@@ -4,6 +4,28 @@ All notable changes to SuperAgent are documented here.
 
 ---
 
+## v2.6.0 — 2026-05-13 (Wave 3: Methodology & Quality)
+
+### Added
+- **SPARC pipeline** (§8.1) — 5-phase gate-enforced methodology orchestrator. `bin/superagent-sparc` with `init <slug>` / `gate` / `advance` / `report` / `status` subcommands. Per-feature state under `~/.superagent/sparc/<slug>/` with `spec.md` → `pseudo.md` → `arch.md` → `refine.md` → `complete.md` artifacts. **Boolean gates per phase — no 0.0-1.0 quality scores.** Refuses to advance until the current gate passes.
+- **Testgen** (§8.2) — `bin/superagent-testgen` with `scan` / `gap` / `suggest` / `status` subcommands. Coverage adapter for jest + pytest. Gap detection sorts by `gap × LOC`. `suggest <file>` emits a markdown skeleton with uncovered ranges + named symbols. **Testgen never writes test bodies.**
+- **Diff-risk** (§8.3) — `bin/superagent-diff-risk` with `classify` / `impact` / `reviewers` / `report` subcommands. 7-type classifier, IMPACT_KEYWORDS score → `low/medium/high/critical`, 5 risk-factor booleans, CODEOWNERS reviewer recommendation. No GitHub API.
+- **3 new user-facing skills**: `sparc`, `testgen`, `diff-risk`.
+- **3 new slash commands**: `/sparc`, `/testgen`, `/diff-risk` (with legacy `/jujutsu` alias).
+
+### Changed
+- `skills/review/SKILL.md` — gains "Step 0 — diff-risk pre-check" that calls `superagent-diff-risk` and `superagent-testgen status` before the 6-point checklist.
+- `skills/ship/SKILL.md` — gains "12b. Diff-risk pre-push gate". `high`/`critical` impact triggers force-confirm. Testgen `BELOW THRESHOLD` warns (warn-only by default).
+- `skills/superagent/brain/rules.yaml` gains 3 new rules routing sparc/testgen/diff-risk keywords.
+
+### Migration
+- `install.sh` scaffolds `~/.superagent/{sparc,testgen,diff}/` and seeds `min-coverage.txt=70`. Drops `~/.superagent/.wave-3.installed` marker. Idempotent.
+
+### Bench
+- 42 prompts (5 added for Wave 3). Hard gate ≥85%; current AVG 1.000.
+
+---
+
 ## v2.5.0 — 2026-05-12 (Wave 2: Autonomous & Safe)
 
 ### Added
