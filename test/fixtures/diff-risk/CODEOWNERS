@@ -1,0 +1,7 @@
+# Sample CODEOWNERS fixture for testing
+/api/auth/        @sec-team @api-leads
+/api/payments/    @payments-team @sec-team
+/api/             @api-leads
+/db/              @db-team
+*.md              @docs-team
+/src/theme/       @design-team @frontend-leads

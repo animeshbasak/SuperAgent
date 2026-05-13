@@ -1,0 +1,20 @@
+{"msg":"feat: add new payment gateway integration","files":["api/payments/stripe.ts","api/payments/index.ts"],"label":"feature"}
+{"msg":"feat(auth): implement OAuth login flow","files":["api/auth/oauth.ts","api/auth/handlers.ts"],"label":"feature"}
+{"msg":"feat: new dark mode toggle feature","files":["src/theme/Toggle.tsx","src/theme/store.ts"],"label":"feature"}
+{"msg":"feat(api): add comments endpoint","files":["api/comments.ts","schemas/comment.ts"],"label":"feature"}
+{"msg":"feat: implement search functionality","files":["src/search/index.ts","src/search/index.test.ts"],"label":"feature"}
+{"msg":"fix: bug in dark mode toggle persistence","files":["src/theme/store.ts"],"label":"bugfix"}
+{"msg":"fix(api): resolve issue with race condition in webhook handler","files":["api/webhooks/handler.ts"],"label":"bugfix"}
+{"msg":"hotfix: patch deserialization crash on null user","files":["api/user/serialize.ts"],"label":"bugfix"}
+{"msg":"fix: resolve issue with stale token cache","files":["api/auth/cache.ts"],"label":"bugfix"}
+{"msg":"fix(billing): bug where invoice date was off by one day","files":["api/billing/invoice.ts"],"label":"bugfix"}
+{"msg":"refactor: restructure auth middleware","files":["api/auth/middleware.ts","api/auth/utils.ts"],"label":"refactor"}
+{"msg":"refactor: rename UserService to AccountService","files":["api/services/account.ts"],"label":"refactor"}
+{"msg":"refactor: cleanup duplicated validation code","files":["src/validators/index.ts"],"label":"refactor"}
+{"msg":"refactor: reorganize utility helpers","files":["src/util/helpers.ts","src/util/dates.ts"],"label":"refactor"}
+{"msg":"refactor(db): restructure migration directory","files":["db/migrations/index.ts","db/migrations/utils.ts"],"label":"refactor"}
+{"msg":"docs: update README with new install steps","files":["README.md"],"label":"docs"}
+{"msg":"docs(api): documentation for webhook signature verification","files":["docs/api/webhooks.md"],"label":"docs"}
+{"msg":"docs: add migration guide for v3","files":["docs/MIGRATION.md","CHANGELOG.md"],"label":"docs"}
+{"msg":"test: add e2e specs for checkout flow","files":["e2e/checkout.test.ts","e2e/payment.test.ts"],"label":"test"}
+{"msg":"test: cover error paths in auth service","files":["__tests__/auth.test.ts"],"label":"test"}

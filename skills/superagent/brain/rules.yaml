@@ -249,4 +249,9 @@ rules:
     chain: [testgen]
     complexity: trivial
 
+  - name: diff-risk
+    signal: "\\b(diff[ -]?risk|impact score|blast radius|reviewer suggest|jujutsu|code ?owners|analyz(?:e|ing) (the |this )?(diff|risk))\\b"
+    chain: [diff-risk]
+    complexity: trivial
+
 build_archetypes: [bug, feature, ui, webgl, refactor, framer-motion]

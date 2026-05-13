@@ -1,0 +1,304 @@
+#!/usr/bin/env bash
+# superagent-diff-risk — classify + impact + risk + reviewer rec for a git diff (Wave 3 §8.3).
+# Subcommands:
+#   classify [--commit-msg <msg>] [--files <a,b,c>] [--json]
+#   impact   [--files <a,b,c>] [--branch <name>] [--diff-lines <n>] [--json]
+#   reviewers [--files <a,b,c>] [--codeowners <path>] [--json]
+#   report   [--base <ref>] [--json]            -- composes everything; uses git when no flags
+set -euo pipefail
+
+ROOT="$HOME/.superagent/diff"
+LAST="$ROOT/last.json"
+mkdir -p "$ROOT" 2>/dev/null || true
+
+usage() {
+  cat <<EOF
+Usage: superagent-diff-risk <subcommand> [args]
+Subcommands:
+  classify [--commit-msg <m>] [--files <csv>] [--json]
+  impact   [--files <csv>] [--branch <name>] [--diff-lines <n>] [--json]
+  reviewers [--files <csv>] [--codeowners <path>] [--json]
+  report   [--base <ref>] [--json]
+EOF
+}
+
+# Auto-pull from git when CLI args are missing
+git_files() { git diff --name-only "${1:-HEAD~1}...HEAD" 2>/dev/null | tr '\n' ',' || true; }
+git_msg()   { git log -1 --pretty=%s 2>/dev/null || true; }
+git_branch(){ git rev-parse --abbrev-ref HEAD 2>/dev/null || true; }
+git_loc()   { git diff --shortstat "${1:-HEAD~1}...HEAD" 2>/dev/null | awk '{print $4+$6}' || echo 0; }
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  -h|--help|"") usage; exit 0 ;;
+
+  classify)
+    MSG=""; FILES=""; JSON=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --commit-msg) MSG="$2"; shift 2 ;;
+        --files)      FILES="$2"; shift 2 ;;
+        --json)       JSON=1; shift ;;
+        *) shift ;;
+      esac
+    done
+    [[ -z "$MSG" ]] && MSG=$(git_msg || echo "")
+    [[ -z "$FILES" ]] && FILES=$(git_files || echo "")
+
+    MSG="$MSG" FILES="$FILES" JSON="$JSON" python3 <<'PY'
+import json, os, re
+
+msg = os.environ["MSG"]
+files_csv = os.environ["FILES"]
+files = [f.strip() for f in files_csv.split(",") if f.strip()]
+json_mode = os.environ["JSON"] == "1"
+
+CLASSIFICATION_PATTERNS = {
+  "feature":  [r"^feat", r"add.*feature", r"implement", r"new.*functionality"],
+  "bugfix":   [r"^fix", r"bug", r"patch", r"resolve.*issue", r"hotfix"],
+  "refactor": [r"^refactor", r"restructure", r"reorganize", r"cleanup", r"rename"],
+  "docs":     [r"^docs?", r"documentation", r"readme", r"\.md$"],
+  "test":     [r"^test", r"spec", r"\.test\.[jt]sx?$", r"__tests__"],
+  "config":   [r"^config", r"\.config\.", r"package\.json", r"\.env"],
+  "style":    [r"^style", r"format", r"lint", r"prettier", r"eslint"],
+}
+
+counts = {k: 0 for k in CLASSIFICATION_PATTERNS}
+for kind, patterns in CLASSIFICATION_PATTERNS.items():
+    for p in patterns:
+        if re.search(p, msg, re.I):
+            counts[kind] += 1
+        for f in files:
+            if re.search(p, f, re.I):
+                counts[kind] += 1
+
+ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+primary = ranked[0][0] if ranked[0][1] > 0 else "unknown"
+secondary = [k for k, v in ranked[1:] if v > 0]
+
+total = sum(counts.values())
+confidence = round(counts[primary] / total, 2) if total > 0 else 0.0
+
+out = {"primary": primary, "secondary": secondary, "confidence": confidence, "counts": counts}
+if json_mode:
+    print(json.dumps(out))
+else:
+    print(f"primary: {primary}  confidence: {confidence}  secondary: {', '.join(secondary) or '(none)'}")
+PY
+    ;;
+
+  impact)
+    FILES=""; BRANCH=""; LOC=0; JSON=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --files)      FILES="$2"; shift 2 ;;
+        --branch)     BRANCH="$2"; shift 2 ;;
+        --diff-lines) LOC="$2"; shift 2 ;;
+        --json)       JSON=1; shift ;;
+        *) shift ;;
+      esac
+    done
+    [[ -z "$FILES"  ]] && FILES=$(git_files || echo "")
+    [[ -z "$BRANCH" ]] && BRANCH=$(git_branch || echo "")
+    [[ "$LOC" == "0" ]] && LOC=$(git_loc || echo 0)
+
+    FILES="$FILES" BRANCH="$BRANCH" LOC="$LOC" JSON="$JSON" python3 <<'PY'
+import json, os, re, subprocess
+files_csv = os.environ["FILES"]
+branch = os.environ["BRANCH"]
+loc = int(os.environ.get("LOC", "0") or 0)
+json_mode = os.environ["JSON"] == "1"
+
+files = [f.strip() for f in files_csv.split(",") if f.strip()]
+
+IMPACT_KEYWORDS = {
+  "security":3,"auth":3,"payment":3,"database":2,"api":2,"core":2,
+  "util":1,"helper":1,"test":0,"mock":0,"fixture":0,
+}
+
+# Score from path tokens + branch name
+score = 0
+hit_keywords = []
+for token in IMPACT_KEYWORDS:
+    if re.search(rf"\b{token}\b", branch, re.I):
+        score += IMPACT_KEYWORDS[token]; hit_keywords.append(token)
+    for f in files:
+        if re.search(rf"(^|/){token}([./_-]|$)", f, re.I):
+            score += IMPACT_KEYWORDS[token]; hit_keywords.append(token)
+
+level = "low"
+if score >= 5: level = "critical"
+elif score >= 3: level = "high"
+elif score >= 1: level = "medium"
+
+# Risk factors
+risk_factors = []
+
+# 1. high-churn files (best effort — only checked when running inside a git repo)
+high_churn = []
+for f in files:
+    try:
+        n = int(subprocess.run(["git", "log", "--oneline", "--", f],
+                                capture_output=True, text=True, timeout=3).stdout.strip().count("\n") + 1)
+        if n > 20:
+            high_churn.append(f)
+    except Exception:
+        pass
+if high_churn:
+    risk_factors.append({"name": "high_churn_files", "matches": high_churn})
+
+# 2. Security-sensitive paths
+sec_paths = [f for f in files if re.search(r"(^|/)(auth|crypto|permissions?|\.env)(/|$)", f, re.I)]
+if sec_paths:
+    risk_factors.append({"name": "security_paths", "matches": sec_paths})
+
+# 3. Large diff
+if loc > 500:
+    risk_factors.append({"name": "large_diff", "lines": loc})
+
+# 4. Cross-module (>=3 top-level dirs)
+top_dirs = {f.split("/", 1)[0] for f in files if "/" in f}
+if len(top_dirs) >= 3:
+    risk_factors.append({"name": "cross_module", "dirs": sorted(top_dirs)})
+
+# 5. DB migration
+migrations = [f for f in files if re.search(r"(^|/)migrations?/", f, re.I) or re.search(r"\.sql$", f, re.I)]
+if migrations:
+    risk_factors.append({"name": "db_migration", "matches": migrations})
+
+out = {
+    "impact": level,
+    "score": score,
+    "keywords_hit": sorted(set(hit_keywords)),
+    "risk_factors": risk_factors,
+}
+if json_mode:
+    print(json.dumps(out))
+else:
+    print(f"impact: {level}  score: {score}  keywords: {', '.join(out['keywords_hit']) or '(none)'}")
+    if risk_factors:
+        print("risk factors:")
+        for rf in risk_factors:
+            print(f"  - {rf['name']}: {rf.get('matches') or rf.get('dirs') or rf.get('lines','')}")
+PY
+    ;;
+
+  reviewers)
+    FILES=""; CO=""; JSON=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --files)       FILES="$2"; shift 2 ;;
+        --codeowners)  CO="$2"; shift 2 ;;
+        --json)        JSON=1; shift ;;
+        *) shift ;;
+      esac
+    done
+    [[ -z "$FILES" ]] && FILES=$(git_files || echo "")
+    if [[ -z "$CO" ]]; then
+      for cand in .github/CODEOWNERS docs/CODEOWNERS CODEOWNERS; do
+        [[ -f "$cand" ]] && CO="$cand" && break
+      done
+    fi
+
+    FILES="$FILES" CO="$CO" JSON="$JSON" python3 <<'PY'
+import json, os, fnmatch
+files_csv = os.environ["FILES"]
+co_path = os.environ["CO"]
+json_mode = os.environ["JSON"] == "1"
+files = [f.strip() for f in files_csv.split(",") if f.strip()]
+
+if not co_path or not os.path.exists(co_path):
+    out = {"owners": [], "source": None}
+    print(json.dumps(out) if json_mode else "no CODEOWNERS file found")
+    raise SystemExit(0)
+
+rules = []
+for line in open(co_path):
+    line = line.split("#", 1)[0].strip()
+    if not line:
+        continue
+    parts = line.split()
+    if len(parts) < 2:
+        continue
+    glob, owners = parts[0], parts[1:]
+    # Translate GitHub-style glob: leading "/" means repo root anchor; "/<dir>/" means dir prefix
+    if glob.startswith("/"):
+        glob = glob[1:]
+    # If glob ends with "/", match everything beneath
+    if glob.endswith("/"):
+        glob = glob + "**"
+    rules.append((glob, owners))
+
+owners = set()
+for f in files:
+    for glob, owners_list in rules:
+        if fnmatch.fnmatch(f, glob):
+            owners.update(owners_list)
+
+out = {"owners": sorted(owners), "source": co_path}
+print(json.dumps(out) if json_mode else "owners: " + (", ".join(sorted(owners)) or "(none)"))
+PY
+    ;;
+
+  report)
+    BASE=""
+    JSON=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --base) BASE="$2"; shift 2 ;;
+        --json) JSON=1; shift ;;
+        *) shift ;;
+      esac
+    done
+
+    FILES_CSV=$(git_files "$BASE")
+    MSG=$(git_msg)
+    BRANCH=$(git_branch)
+    LOC=$(git_loc "$BASE")
+
+    CLASS=$("$0" classify --commit-msg "$MSG" --files "$FILES_CSV" --json 2>/dev/null || echo '{}')
+    IMP=$("$0" impact --files "$FILES_CSV" --branch "$BRANCH" --diff-lines "$LOC" --json 2>/dev/null || echo '{}')
+    REV=$("$0" reviewers --files "$FILES_CSV" --json 2>/dev/null || echo '{}')
+
+    REPORT=$(jq -nc \
+      --argjson class "$CLASS" \
+      --argjson impact "$IMP" \
+      --argjson reviewers "$REV" \
+      --arg branch "$BRANCH" \
+      --arg files "$FILES_CSV" \
+      --argjson loc "${LOC:-0}" \
+      '{branch:$branch, files:($files | split(",") | map(select(length>0))), loc:$loc, classification:$class, impactReport:$impact, reviewers:$reviewers}')
+
+    echo "$REPORT" > "$LAST"
+
+    if [[ "$JSON" -eq 1 ]]; then
+      echo "$REPORT"
+    else
+      REPORT="$REPORT" python3 <<'PY'
+import json, os
+r = json.loads(os.environ["REPORT"])
+c = r.get("classification", {}); imp = r.get("impactReport", {})
+rev = r.get("reviewers", {})
+print(f"# Diff Analysis: {r.get('branch','(detached)')}")
+print(f"Primary: {c.get('primary','?')}  (conf {c.get('confidence','?')})   "
+      f"Impact: {imp.get('impact','?')}   Score: {imp.get('score','?')}")
+files = r.get("files", [])
+print(f"Files: {len(files)}  diff lines: {r.get('loc',0)}")
+if imp.get("risk_factors"):
+    print("Risk factors:")
+    for rf in imp["risk_factors"]:
+        name = rf.get("name")
+        extra = rf.get("matches") or rf.get("dirs") or rf.get("lines") or ""
+        print(f"  - {name}: {extra}")
+owners = rev.get("owners") or []
+print(f"Suggested reviewers: {', '.join(owners) if owners else '(none)'}")
+PY
+    fi
+    ;;
+
+  *)
+    echo "unknown subcommand: $cmd" >&2; usage >&2; exit 2
+    ;;
+esac
