@@ -53,3 +53,6 @@
 {"id": 40, "prompt": "analyze the risk of this diff before push", "archetype": "diff-risk", "expected_chain": ["mempalace-wake", "diff-risk"]}
 {"id": 41, "prompt": "show me the traceability matrix for feat-auth", "archetype": "sparc", "expected_chain": ["mempalace-wake", "sparc"]}
 {"id": 42, "prompt": "suggest tests for the uncovered branches in src/auth.ts", "archetype": "testgen", "expected_chain": ["mempalace-wake", "testgen"]}
+{"id": 43, "prompt": "scrape product prices from this Cloudflare-protected page", "archetype": "scraping", "expected_chain": ["mempalace-wake", "brainstorming", "ui-ux-pro-max", "scraping", "verification-before-completion"]}
+{"id": 44, "prompt": "spawn another claude agent to handle the migration in parallel", "archetype": "agent-pool", "expected_chain": ["mempalace-wake", "agent-pool"]}
+{"id": 45, "prompt": "reload skills after I added a new one to skills/", "archetype": "dynamic-skills", "expected_chain": ["mempalace-wake", "dynamic-skills"]}

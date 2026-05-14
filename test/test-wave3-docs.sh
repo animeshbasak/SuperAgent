@@ -11,7 +11,10 @@ grep -q '## v2.6.0' "$ROOT/CHANGELOG.md" \
   || { echo "FAIL: CHANGELOG missing v2.6.0 section"; exit 1; }
 
 VERSION=$(jq -r '.version' "$ROOT/package.json" 2>/dev/null || echo missing)
-[[ "$VERSION" == "2.6.0" ]] || { echo "FAIL: package.json version is $VERSION, want 2.6.0"; exit 1; }
+case "$VERSION" in
+  2.6.*|2.7.*|2.8.*|2.9.*|3.*) ;;
+  *) echo "FAIL: package.json version is $VERSION, want >=2.6.0"; exit 1 ;;
+esac
 
 grep -qE 'SPARC|Testgen|Diff-risk' "$ROOT/README.md" \
   || { echo "FAIL: README missing Wave 3 capability rows"; exit 1; }
