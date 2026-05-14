@@ -40,6 +40,100 @@ SuperAgent includes these CLI tools. Run them when indicated by the routing tabl
 
 ## Skills Reference
 
+### agent-pool
+> Multi-Claude-Code session orchestration. Spawn, list, tag, and abandon parallel coding agents — each with its own scoped context window, working directory, and conversation history. Triggers on "agent pool", "spawn agent", "spawn another claude", "parallel sessions", "dispatch agent", "octogent", "multi-agent orchestration", "claude code session".
+
+# agent-pool
+
+Coordinate multiple Claude Code sessions running in parallel against the same workspace, each with its own scoped task, context window, and conversation history. Distilled from [octogent](https://github.com/hesamsheikh/octogent) by Hesam Sheikh ([Discord: Open Source AI Builders](https://discord.gg/vtJykN3t)) — the multi-Claude-Code orchestrator that introduced the "tentacle" abstraction.
+
+The original octogent is a Hono + React app with a websocket-driven UI. We distill the *pattern* — session enumeration, tagging, and dispatch — into a thin bash CLI (`superagent-pool`) + cooperative directive emission. No daemon. No long-lived server. The harness (or you) does the actual spawning via the Agent tool.
+
+## When to use
+
+- The user has ≥3 truly parallel workstreams (docs + db + frontend + API) and wants each in its own session with its own context window.
+- The user says "spawn another agent", "run this in parallel", "dispatch a Claude Code session for X", "fork a tentacle".
+- The user is juggling too many open terminals and wants a status board (`superagent-pool list`).
+- The user wants to *tag* a long-running session so they can recognize it later ("the one fixing payments").
+- The user wants to *abandon* a stuck or no-longer-relevant session without killing the OS process.
+
+## When NOT to use
+
+- **Sequential specialist work in one session.** That is the Wave 2 specialist-agents skill (architect → coder → tester role swaps inside one context window). Use Wave 2 when you want *roles*, agent-pool when you want *parallel sessions*.
+- **In-session parallel tool calls.** Use `fanout` / `dispatching-parallel-agents` when subtasks share the parent's context and the parent can merge their reports.
+- **Subagents within the current Claude Code session.** That's the built-in Agent tool — agent-pool is for *new top-level Claude Code sessions* (each its own conversation tree under `~/.claude/projects/`).
+
+## Hand-off rules
+
+| Situation                                                | Skill                          |
+| -------------------------------------------------------- | ------------------------------ |
+| One session, multiple roles, sequential                  | Wave 2 specialist agents       |
+| One session, independent subtasks, in-context merge      | `fanout` / `dispatching-parallel-agents` |
+| ≥3 truly parallel top-level sessions, scoped contexts    | **agent-pool**                 |
+| Schedule recurring work for later                        | `autopilot` + `ScheduleWakeup` |
+
+## Procedure
+
+1. **Survey the field.** Enumerate the Claude Code sessions already running on this machine:
+   ```bash
+   superagent-pool list
+   superagent-pool list --json
+   ```
+   This walks `~/.claude/projects/` — one directory per project, JSONL files per session — same pattern octogent uses in `claudeSessionScanner.ts`.
+
+2. **Decide whether to spawn.** If the user wants a new parallel session, emit a dispatch directive:
+   ```bash
+   superagent-pool spawn "fix the payments webhook in /apps/api"
+   ```
+   This **does not actually spawn a process.** It prints a JSON directive:
+   ```json
+   {"directive":"spawn-claude","cwd":"/Users/...","description":"...","sessionTag":"abc12345"}
+   ```
+   The calling agent (you) is responsible for invoking the Agent tool with this brief — the same cooperative pattern autopilot uses with `ScheduleWakeup`. No daemon, no privileged spawning.
+
+3. **Tag long-running sessions.** When a session has a recognizable purpose, tag it so the human (and future you) can find it:
+   ```bash
+   superagent-pool tag <session-id> "payments webhook refactor"
+   ```
+   Tags persist in `~/.superagent/pool/tags.jsonl`.
+
+4. **Abandon stuck sessions.** If a session has gone sideways and the user wants to stop relying on it (but does not want you to `kill -9` a process you do not own):
+   ```bash
+   superagent-pool kill <session-id>
+   ```
+   This appends an abandon record to `~/.superagent/pool/abandons.jsonl`. The user can still scroll their actual terminal back; agent-pool just marks the session as "not part of the current plan".
+
+5. **Status board.**
+   ```bash
+   superagent-pool status
+   ```
+   Summarizes: N active sessions, N tagged, N abandoned.
+
+## State
+
+All state lives under `~/.superagent/pool/`:
+
+- `tags.jsonl` — one record per tag: `{"sessionId":"...","description":"...","ts":"<iso>"}`
+- `abandons.jsonl` — one record per abandon: `{"action":"abandon","sessionId":"...","ts":"<iso>"}`
+
+Read-only sources:
+
+- `~/.claude/projects/<project-slug>/<session-id>.jsonl` — Claude Code's own session log.
+
+## Limits and honesty
+
+- agent-pool **does not own** any OS process. It cannot `kill -9` Claude Code; it only records intent in `abandons.jsonl`.
+- agent-pool **does not spawn** Claude Code directly. It emits a directive; the Agent tool does the actual work.
+- agent-pool **does not communicate** between sessions. octogent has websocket inter-agent messaging; we omit that. Use the filesystem (`docs/handoff/*.md`) or octogent itself if you need real coordination.
+
+This is intentionally the thinnest possible distillation of the pattern. For the full vision — tentacles, todo.md execution surfaces, inter-agent messaging — install octogent.
+
+## Credits
+
+octogent — [github.com/hesamsheikh/octogent](https://github.com/hesamsheikh/octogent) by [Hesam Sheikh](https://x.com/Hesamation). Discord: [Open Source AI Builders](https://discord.gg/vtJykN3t).
+
+---
+
 ### aidefence
 > Per-prompt injection + PII scanner. Pure regex over 58 shipped patterns (instruction override, role switching, prompt injection, jailbreak, encoding attacks, context manipulation, PII). Wired into UserPromptSubmit hook when enabled. Default off. Triggers on "scan prompt", "prompt injection", "PII scan", "jailbreak", "enable aidefence", "defend prompts".
 
@@ -761,6 +855,90 @@ Reads `.github/CODEOWNERS` → `docs/CODEOWNERS` → root `CODEOWNERS` (first fo
 ## Ethos
 
 Verify or die. The score is not a quality judgment — it's a blast-radius prediction. A 5/5 critical score on a database migration is not bad; it's the signal to ask whoever owns the DB before push. Pure file parsing keeps this fast and offline.
+
+---
+
+### dynamic-skills
+> |
+
+# dynamic-skills
+
+Distilled from **jcode** (https://github.com/1jehuang/jcode) — specifically
+[Phase 1 of PLAN_MCP_SKILLS.md](https://github.com/1jehuang/jcode/blob/main/PLAN_MCP_SKILLS.md):
+
+> Skills can be reloaded without restarting. New tool `reload_skills`: agent can
+> trigger `reload_skills` to pick up new skills.
+
+jcode is Rust. We're not vendoring it — we're capturing the *intent* in bash.
+
+---
+
+## What it does
+
+Diffs and mirrors skill files between two source directories:
+
+- **Repo**: `./skills/<name>/SKILL.md` (this superagent checkout, project-local)
+- **Claude**: `~/.claude/skills/<name>/SKILL.md` (what Claude Code actually loads at startup)
+
+If a skill exists in the repo but not in `~/.claude/skills/`, the next session won't
+see it. `superagent-reload sync` fixes that by copying the dir over.
+
+---
+
+## Important limit (read this first)
+
+**Claude Code does not expose a runtime skill-reload API to hooks or to skills
+themselves.** A hook can edit files on disk, but it cannot force the active
+Claude Code process to rescan the skills directory mid-session.
+
+The bin can *prepare* the filesystem. The actual pickup requires one of:
+
+1. The user types `/reload` in the active session, OR
+2. The user restarts the Claude Code session (Ctrl-D → re-launch), OR
+3. A new session is started after the sync ran.
+
+Do not promise "live" hot-reload. We mirror files; the harness decides when to
+re-scan them. This is the difference between us and jcode's Rust implementation
+where the registry is owned by the same process.
+
+---
+
+## Procedure
+
+1. **Diff.** Run `superagent-reload list` to see:
+   - skills present in both repo and `~/.claude/skills/`
+   - skills only in the repo (will need sync)
+   - skills only in `~/.claude/skills/` (likely third-party or stale)
+
+2. **Sync.** Run `superagent-reload sync` to copy any repo skill dirs that are
+   missing or older than the `~/.claude/skills/` copy. Use `--dry-run` first if
+   the user wants to preview the changes.
+
+3. **Diff a single skill** (optional): `superagent-reload diff <name>` shows a
+   `diff -u` between the repo's SKILL.md and the installed copy.
+
+4. **Trigger the rescan.** Tell the user to type `/reload`, or note that the
+   new skill will be active on next session start. The skill never lies about
+   forcing a live reload.
+
+5. **Status.** `superagent-reload status` for the one-line summary
+   (N in repo, N in claude, N out-of-sync).
+
+---
+
+## When NOT to use this
+
+- For adapter sync (Codex, Continue, Aider, Cursor) — that's `bin/superagent-install`.
+- For learning new routing patterns — that's `superagent-learn-loop`.
+- For installing third-party skills from a registry — out of scope.
+
+---
+
+## Credit
+
+- jcode: https://github.com/1jehuang/jcode
+- Phase 1 of the dynamic-skills plan:
+  https://github.com/1jehuang/jcode/blob/main/PLAN_MCP_SKILLS.md
 
 ---
 
@@ -1802,6 +1980,112 @@ Produce markdown report:
 - Every finding has a file:line reference.
 - Verdict is one of the three explicit values.
 - Fix-First pipeline section present.
+
+---
+
+### scraping
+> Web scraping, crawling, and data extraction with anti-bot bypass (Cloudflare Turnstile), stealth headless browsing, JS rendering, and adaptive parsing. Triggers on "scrape", "scraping", "crawl", "crawler", "extract from website", "bypass cloudflare", "anti-bot", "scrapling". Use when the user wants to pull content from a website, especially one that fails to fetch via plain HTTP or has anti-bot protections.
+
+# scraping — SuperAgent wrapper around Scrapling
+
+This skill is a thin SuperAgent-namespaced wrapper around **[Scrapling](https://github.com/D4Vinci/Scrapling)**, an adaptive Web Scraping framework by **D4Vinci**. We do not vendor Scrapling itself — we install it on first use into a per-user Python virtualenv and drive it through `bin/superagent-scrape`.
+
+> Credits and upstream
+> - GitHub: <https://github.com/D4Vinci/Scrapling>
+> - Discord: <https://discord.gg/EMgGbDceNQ>
+> - Docs: <https://scrapling.readthedocs.io/>
+>
+> All anti-bot bypass capability, the spider framework, the adaptive parser, and the stealth fetchers are Scrapling's work. SuperAgent only provides the routing rule and a thin CLI wrapper so the classifier can dispatch scraping tasks consistently.
+
+## Why route to this skill
+
+Use **scraping** when:
+
+- The user says "scrape", "crawl", "extract from a website", "pull product prices", "grab the article body".
+- A `WebFetch` / plain HTTP request returns empty, a CAPTCHA page, or a Cloudflare Turnstile interstitial.
+- The site is a modern SPA whose useful content only renders after JavaScript executes.
+- The user explicitly mentions Scrapling, anti-bot bypass, or stealth headless browsing.
+
+If the page is a plain static blog or a Markdown file on GitHub, you do not need this skill — use `WebFetch`. Escalate to scraping only when the simpler path fails.
+
+## Setup (one-time, lazy)
+
+The first time `bin/superagent-scrape` runs, it bootstraps a dedicated Python virtualenv at `~/.superagent/scraping/.venv` and installs Scrapling. You can also do it explicitly:
+
+```bash
+# Idempotent — skips if already installed
+superagent-scrape install
+```
+
+What `install` does, mirroring the upstream Scrapling instructions:
+
+1. Creates a venv at `~/.superagent/scraping/.venv` (override with `SCRAPLING_VENV`).
+2. Runs `pip install "scrapling[all]>=0.4.7"` inside that venv.
+3. Runs `scrapling install --force` inside that venv to pull browser dependencies.
+
+Requires **Python 3.10+**. If `python3` is missing, the wrapper prints a clear error and exits non-zero — it will not silently fall back.
+
+## CLI surface
+
+`bin/superagent-scrape` exposes four subcommands:
+
+| Subcommand | Purpose |
+|------------|---------|
+| `install` | Bootstrap the venv + install Scrapling + browser deps (idempotent). |
+| `fetch <url> [--ai-targeted]` | Plain HTTP `GET` via `scrapling extract get`. Fast path. |
+| `browser <url> [--ai-targeted]` | Headless-browser scrape via `scrapling extract fetch` (escalates to `stealthy-fetch` when needed). |
+| `status` | Report venv state and `scrapling --version`. |
+| `--help` | Print usage. |
+
+### `--ai-targeted` — MANDATORY for AI/agent use
+
+> **IMPORTANT**: When this skill runs from inside an LLM agent (which is every time SuperAgent invokes it), you **MUST** pass `--ai-targeted` to `fetch` and `browser`. This is Scrapling's built-in **prompt-injection protection** — it strips hidden elements and adversarial content from the returned HTML before the agent reads it. For browser commands, `--ai-targeted` also enables ad blocking automatically, which saves tokens. Do not omit it.
+
+## Three reference use cases
+
+### 1. Simple GET — plain HTML page
+
+```bash
+superagent-scrape fetch "https://news.ycombinator.com" --ai-targeted
+```
+
+This is the fast path. No browser, no JavaScript, no anti-bot evasion. Use it for static HTML, blogs, RSS-adjacent pages, and APIs that return HTML.
+
+### 2. Anti-bot-protected site (Cloudflare Turnstile, etc.)
+
+```bash
+superagent-scrape browser "https://protected.example.com/products" --ai-targeted
+```
+
+Routes through Scrapling's **stealthy** browser. Cloudflare Turnstile and similar anti-bot interstitials are solved through automation alone — **no third-party solvers, no API keys, no credentials are involved**. Use this when a plain `fetch` returns a challenge page or empty body.
+
+### 3. JS-rendered SPA (React / Vue / Svelte site)
+
+```bash
+superagent-scrape browser "https://spa.example.com/dashboard" --ai-targeted
+```
+
+Same `browser` subcommand — Scrapling's browser fetcher executes JavaScript, waits for the DOM to settle, then returns the rendered HTML. Use this for any modern web app where the useful content is hydrated client-side.
+
+### Escalation rule of thumb
+
+> Start with `fetch`. If you get empty / challenge / login-wall, escalate to `browser`. Speed difference is small enough that you lose nothing by re-trying.
+
+## Environment overrides
+
+| Var | Purpose | Default |
+|-----|---------|---------|
+| `SCRAPLING_VENV` | Path to the Scrapling venv | `~/.superagent/scraping/.venv` |
+
+## Safety notes (verbatim from upstream)
+
+1. Cloudflare solving is performed via automation — no external solver services or credentials are required.
+2. Proxy usage and CDP mode are optional and user-supplied — this skill does not store secrets.
+3. Arguments like `cdp_url`, `user_data_dir`, and `proxy auth` are validated inside Scrapling, but the user should still be aware they may carry credentials when used.
+
+## Routing
+
+The SuperAgent classifier auto-routes any task matching `\b(scrape|scraping|crawl(er|ing)?|extract from (the |a )?website|bypass cloudflare|anti.?bot|scrapling)\b` to a chain of `[scraping]` at `moderate` complexity. See `skills/superagent/brain/rules.yaml`.
 
 ---
 

@@ -254,4 +254,19 @@ rules:
     chain: [diff-risk]
     complexity: trivial
 
+  - name: scraping
+    signal: "\\b(scrape|scraping|crawl(er|ing)?|extract from (the |a )?website|bypass cloudflare|anti.?bot|scrapling)\\b"
+    chain: [scraping]
+    complexity: moderate
+
+  - name: agent-pool
+    signal: "\\b(agent pool|spawn (a |another |new )?(claude |code )?agent|parallel sessions?|dispatch agent|octogent|multi.?agent orchestration)\\b"
+    chain: [agent-pool]
+    complexity: complex
+
+  - name: dynamic-skills
+    signal: "\\b(reload skills|rescan skills|new skill (was )?added|skill (hot.?)?reload|skill registry|sync skills?|jcode)\\b"
+    chain: [dynamic-skills]
+    complexity: trivial
+
 build_archetypes: [bug, feature, ui, webgl, refactor, framer-motion]

@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# superagent-reload — mirror repo skills into ~/.claude/skills/ for next-session pickup.
+# Inspired by jcode's Phase 1 "hot-reload skills" (PLAN_MCP_SKILLS.md).
+# Claude Code does NOT expose a runtime skill-reload API to hooks — this tool prepares
+# the filesystem; the user/agent triggers the actual rescan via /reload or restart.
+#
+# Subcommands:
+#   list [--json]      Diff repo skills/ vs ~/.claude/skills/
+#   sync [--dry-run]   Copy missing/older repo skills into ~/.claude/skills/
+#   diff <name>        diff -u between repo and installed SKILL.md
+#   status             One-line summary (N in repo / N in claude / N out-of-sync)
+#   --help             This message
+set -euo pipefail
+
+# Resolve repo root from this script's location.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_SKILLS="$REPO_ROOT/skills"
+CLAUDE_SKILLS="${SUPERAGENT_CLAUDE_SKILLS:-$HOME/.claude/skills}"
+
+usage() {
+  cat <<'EOF'
+Usage: superagent-reload <subcommand> [flags]
+
+Subcommands:
+  list [--json]      Diff repo skills/ vs ~/.claude/skills/
+                     Output: present-in-both, only-in-repo, only-in-claude.
+  sync [--dry-run]   For each repo skill, copy to ~/.claude/skills/ if missing
+                     or repo's SKILL.md mtime is newer. --dry-run prints actions
+                     without writing.
+  diff <name>        Show diff -u between repo's SKILL.md and ~/.claude/skills/<name>/SKILL.md.
+  status             One-line summary.
+  --help, -h         Show this help.
+
+Env:
+  SUPERAGENT_CLAUDE_SKILLS   Override target dir (default: ~/.claude/skills).
+
+Note: Claude Code does not expose a runtime hot-reload API to hooks. This tool
+mirrors files; trigger the rescan with /reload or by restarting the session.
+EOF
+}
+
+# List skill names in a directory (each subdir containing SKILL.md).
+list_skills_in() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 0
+  local entry
+  for entry in "$dir"/*/; do
+    [[ -d "$entry" ]] || continue
+    [[ -f "$entry/SKILL.md" ]] || continue
+    basename "$entry"
+  done | LC_ALL=C sort -u
+}
+
+# Print arrays into the three sets.
+compute_sets() {
+  local repo_list claude_list both only_repo only_claude
+  repo_list="$(list_skills_in "$REPO_SKILLS" || true)"
+  claude_list="$(list_skills_in "$CLAUDE_SKILLS" || true)"
+
+  both="$(comm -12 <(printf '%s\n' "$repo_list") <(printf '%s\n' "$claude_list") | sed '/^$/d')"
+  only_repo="$(comm -23 <(printf '%s\n' "$repo_list") <(printf '%s\n' "$claude_list") | sed '/^$/d')"
+  only_claude="$(comm -13 <(printf '%s\n' "$repo_list") <(printf '%s\n' "$claude_list") | sed '/^$/d')"
+
+  # Out-of-sync = present in both AND repo SKILL.md is newer than claude SKILL.md.
+  local out_of_sync="" name
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    local r="$REPO_SKILLS/$name/SKILL.md"
+    local c="$CLAUDE_SKILLS/$name/SKILL.md"
+    if [[ -f "$r" && -f "$c" && "$r" -nt "$c" ]]; then
+      out_of_sync+="$name"$'\n'
+    fi
+  done <<< "$both"
+
+  # Export via globals (bash makes this easier than returning arrays).
+  __BOTH="$both"
+  __ONLY_REPO="$only_repo"
+  __ONLY_CLAUDE="$only_claude"
+  __OUT_OF_SYNC="$(printf '%s' "$out_of_sync" | sed '/^$/d')"
+  __REPO_LIST="$repo_list"
+  __CLAUDE_LIST="$claude_list"
+}
+
+# JSON-encode a list of newline-separated strings as a JSON array.
+json_array() {
+  local input="$1"
+  if [[ -z "$input" ]]; then
+    printf '[]'
+    return
+  fi
+  python3 - <<'PY' "$input"
+import json, sys
+items = [line for line in sys.argv[1].split("\n") if line]
+print(json.dumps(items))
+PY
+}
+
+cmd_list() {
+  local json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      *) echo "list: unknown flag: $1" >&2; return 2 ;;
+    esac
+  done
+
+  if [[ ! -d "$CLAUDE_SKILLS" ]]; then
+    echo "warn: $CLAUDE_SKILLS does not exist (Claude Code not installed for this user?)" >&2
+  fi
+
+  compute_sets
+
+  if (( json )); then
+    python3 - <<'PY' "$__REPO_LIST" "$__CLAUDE_LIST" "$__OUT_OF_SYNC" "$__ONLY_REPO" "$__ONLY_CLAUDE" "$__BOTH"
+import json, sys
+def lst(s): return [l for l in s.split("\n") if l]
+repo, claude, oos, only_repo, only_claude, both = (lst(s) for s in sys.argv[1:7])
+print(json.dumps({
+  "inRepo": repo,
+  "inClaude": claude,
+  "outOfSync": sorted(set(oos) | set(only_repo)),
+  "onlyInRepo": only_repo,
+  "onlyInClaude": only_claude,
+  "inBoth": both,
+}, indent=2))
+PY
+    return 0
+  fi
+
+  echo "== In both repo and Claude =="
+  if [[ -n "$__BOTH" ]]; then printf '  %s\n' $__BOTH; else echo "  (none)"; fi
+  echo
+  echo "== Only in repo (needs sync) =="
+  if [[ -n "$__ONLY_REPO" ]]; then printf '  %s\n' $__ONLY_REPO; else echo "  (none)"; fi
+  echo
+  echo "== Only in Claude (third-party or stale) =="
+  if [[ -n "$__ONLY_CLAUDE" ]]; then printf '  %s\n' $__ONLY_CLAUDE; else echo "  (none)"; fi
+  echo
+  echo "== Out-of-sync (repo newer than Claude copy) =="
+  if [[ -n "$__OUT_OF_SYNC" ]]; then printf '  %s\n' $__OUT_OF_SYNC; else echo "  (none)"; fi
+}
+
+cmd_sync() {
+  local dry_run=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run|-n) dry_run=1; shift ;;
+      *) echo "sync: unknown flag: $1" >&2; return 2 ;;
+    esac
+  done
+
+  if [[ ! -d "$CLAUDE_SKILLS" ]]; then
+    if (( dry_run )); then
+      echo "would create: $CLAUDE_SKILLS"
+    else
+      echo "warn: $CLAUDE_SKILLS does not exist; creating" >&2
+      mkdir -p "$CLAUDE_SKILLS"
+    fi
+  fi
+
+  compute_sets
+
+  local actions=0
+  local name
+  # Skills only in repo → must copy.
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    if (( dry_run )); then
+      echo "would copy: skills/$name → $CLAUDE_SKILLS/$name (new)"
+    else
+      cp -R "$REPO_SKILLS/$name" "$CLAUDE_SKILLS/$name"
+      echo "copied: skills/$name → $CLAUDE_SKILLS/$name (new)"
+    fi
+    actions=$((actions + 1))
+  done <<< "$__ONLY_REPO"
+
+  # Skills in both, but repo newer → overwrite.
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    if (( dry_run )); then
+      echo "would update: skills/$name → $CLAUDE_SKILLS/$name (repo newer)"
+    else
+      rm -rf "$CLAUDE_SKILLS/$name"
+      cp -R "$REPO_SKILLS/$name" "$CLAUDE_SKILLS/$name"
+      echo "updated: skills/$name → $CLAUDE_SKILLS/$name (repo newer)"
+    fi
+    actions=$((actions + 1))
+  done <<< "$__OUT_OF_SYNC"
+
+  if (( actions == 0 )); then
+    echo "nothing to sync — repo and Claude skills are in agreement."
+  fi
+
+  if (( dry_run )); then
+    echo
+    echo "(dry-run: no files were written)"
+  else
+    echo
+    echo "Next: trigger Claude Code to rescan with /reload, or restart the session."
+  fi
+}
+
+cmd_diff() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    echo "diff: missing <skill-name>" >&2
+    return 2
+  fi
+  local repo="$REPO_SKILLS/$name/SKILL.md"
+  local claude="$CLAUDE_SKILLS/$name/SKILL.md"
+  [[ -f "$repo" ]] || { echo "diff: repo SKILL.md missing: $repo" >&2; return 2; }
+  [[ -f "$claude" ]] || { echo "diff: claude SKILL.md missing: $claude (run sync?)" >&2; return 2; }
+  diff -u "$claude" "$repo" || true
+}
+
+cmd_status() {
+  compute_sets
+  local n_repo n_claude n_oos
+  n_repo=$(printf '%s\n' "$__REPO_LIST" | sed '/^$/d' | wc -l | tr -d ' ')
+  n_claude=$(printf '%s\n' "$__CLAUDE_LIST" | sed '/^$/d' | wc -l | tr -d ' ')
+  local oos_combined
+  oos_combined="$({ printf '%s\n' "$__ONLY_REPO"; printf '%s\n' "$__OUT_OF_SYNC"; } | sed '/^$/d' | LC_ALL=C sort -u)"
+  n_oos=$(printf '%s\n' "$oos_combined" | sed '/^$/d' | wc -l | tr -d ' ')
+  echo "skills: $n_repo in repo / $n_claude in claude / $n_oos out-of-sync"
+}
+
+main() {
+  if [[ $# -eq 0 ]]; then
+    usage
+    exit 1
+  fi
+  local sub="$1"; shift || true
+  case "$sub" in
+    list)    cmd_list "$@" ;;
+    sync)    cmd_sync "$@" ;;
+    diff)    cmd_diff "$@" ;;
+    status)  cmd_status "$@" ;;
+    -h|--help|help) usage ;;
+    *) echo "unknown subcommand: $sub" >&2; usage; exit 2 ;;
+  esac
+}
+
+main "$@"

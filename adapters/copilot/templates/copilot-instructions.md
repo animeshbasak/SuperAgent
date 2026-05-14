@@ -13,6 +13,18 @@ When a task matches these patterns, follow the corresponding skill chain:
 
 ## Skills Summary
 
+### agent-pool
+> Multi-Claude-Code session orchestration. Spawn, list, tag, and abandon parallel coding agents — each with its own scoped context window, working directory, and conversation history. Triggers on "agent pool", "spawn agent", "spawn another claude", "parallel sessions", "dispatch agent", "octogent", "multi-agent orchestration", "claude code session".
+
+# agent-pool
+
+Coordinate multiple Claude Code sessions running in parallel against the same workspace, each with its own scoped task, context window, and conversation history. Distilled from [octogent](https://github.com/hesamsheikh/octogent) by Hesam Sheikh ([Discord: Open Source AI Builders](https://discord.gg/vtJykN3t)) — the multi-Claude-Code orchestrator that introduced the "tentacle" abstraction.
+
+The original octogent is a Hono + React app with a websocket-driven UI. We distill the *patte
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
 ### aidefence
 > Per-prompt injection + PII scanner. Pure regex over 58 shipped patterns (instruction override, role switching, prompt injection, jailbreak, encoding attacks, context manipulation, PII). Wired into UserPromptSubmit hook when enabled. Default off. Triggers on "scan prompt", "prompt injection", "PII scan", "jailbreak", "enable aidefence", "defend prompts".
 
@@ -132,6 +144,30 @@ Wave 3 ships a per-diff scoring bin that augments `review` and `ship`. Diff-risk
 - A legacy `/jujutsu` invocation — that's the same skill (deprecation alias kept).
 
 ## Procedure
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### dynamic-skills
+> |
+
+# dynamic-skills
+
+Distilled from **jcode** (https://github.com/1jehuang/jcode) — specifically
+[Phase 1 of PLAN_MCP_SKILLS.md](https://github.com/1jehuang/jcode/blob/main/PLAN_MCP_SKILLS.md):
+
+> Skills can be reloaded without restarting. New tool `reload_skills`: agent can
+> trigger `reload_skills` to pick up new skills.
+
+jcode is Rust. We're not vendoring it — we're capturing the *intent* in bash.
+
+---
+
+## What it does
+
+Diffs and mirrors skill files between two source directories:
+
+- **Repo**: `
 
 *(Full instructions available in SuperAgent skills directory)*
 
@@ -339,6 +375,21 @@ Before running the 6-point checklist, run `superagent-diff-risk` to ground the r
 
 ```bash
 superagent-dif
+
+*(Full instructions available in SuperAgent skills directory)*
+
+
+### scraping
+> Web scraping, crawling, and data extraction with anti-bot bypass (Cloudflare Turnstile), stealth headless browsing, JS rendering, and adaptive parsing. Triggers on "scrape", "scraping", "crawl", "crawler", "extract from website", "bypass cloudflare", "anti-bot", "scrapling". Use when the user wants to pull content from a website, especially one that fails to fetch via plain HTTP or has anti-bot protections.
+
+# scraping — SuperAgent wrapper around Scrapling
+
+This skill is a thin SuperAgent-namespaced wrapper around **[Scrapling](https://github.com/D4Vinci/Scrapling)**, an adaptive Web Scraping framework by **D4Vinci**. We do not vendor Scrapling itself — we install it on first use into a per-user Python virtualenv and drive it through `bin/superagent-scrape`.
+
+> Credits and upstream
+> - GitHub: <https://github.com/D4Vinci/Scrapling>
+> - Discord: <https://discord.gg/EMgGbDceNQ>
+> - Docs: <https://scra
 
 *(Full instructions available in SuperAgent skills directory)*
 

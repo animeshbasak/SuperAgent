@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# superagent-scrape — thin CLI wrapper around the Scrapling library.
+#
+# Scrapling (https://github.com/D4Vinci/Scrapling) by D4Vinci does the
+# actual scraping. This wrapper installs it into a per-user venv and
+# exposes a few subcommands that the SuperAgent classifier can route to.
+#
+# Subcommands:
+#   install                  Create venv + install scrapling[all]>=0.4.7 + browser deps (idempotent)
+#   fetch <url> [--ai-targeted]    Plain HTTP GET via `scrapling extract get`
+#   browser <url> [--ai-targeted]  Headless-browser scrape via `scrapling extract fetch`
+#   status                   Report venv state + scrapling version
+#   --help | -h | help       Print usage
+#
+# Env:
+#   SCRAPLING_VENV   Override path to the venv (default: ~/.superagent/scraping/.venv)
+
+set -euo pipefail
+
+SCRAPLING_VENV="${SCRAPLING_VENV:-$HOME/.superagent/scraping/.venv}"
+VENV_BIN="$SCRAPLING_VENV/bin"
+VENV_PY="$VENV_BIN/python"
+VENV_SCRAPLING="$VENV_BIN/scrapling"
+MIN_SPEC='scrapling[all]>=0.4.7'
+
+# ── usage ────────────────────────────────────────────────────────────────────
+usage() {
+  cat <<'EOF'
+superagent-scrape — SuperAgent wrapper around Scrapling (by D4Vinci)
+
+Usage:
+  superagent-scrape install
+      Create a Python venv and install scrapling[all]>=0.4.7 + browser deps.
+      Idempotent: skips installation if scrapling is already present.
+
+  superagent-scrape fetch <url> [--ai-targeted]
+      Plain HTTP GET via Scrapling. Use for simple static pages.
+
+  superagent-scrape browser <url> [--ai-targeted]
+      Headless-browser scrape via Scrapling. Use for JS-rendered SPAs
+      or anti-bot-protected sites (Cloudflare Turnstile, etc.).
+
+  superagent-scrape status
+      Print venv path and the installed scrapling version (if any).
+
+  superagent-scrape --help
+      Print this help.
+
+Important:
+  When invoked from an LLM agent (the SuperAgent default), pass --ai-targeted
+  to fetch / browser. It strips hidden / adversarial elements before the
+  agent reads the page (prompt-injection protection) and, for browser, also
+  enables ad blocking to save tokens.
+
+Env:
+  SCRAPLING_VENV   Override venv path (default: ~/.superagent/scraping/.venv)
+
+Upstream:
+  https://github.com/D4Vinci/Scrapling
+  https://discord.gg/EMgGbDceNQ
+EOF
+}
+
+die() { echo "superagent-scrape: $*" >&2; exit 1; }
+
+require_python3() {
+  command -v python3 >/dev/null 2>&1 \
+    || die "python3 not found on PATH. Install Python 3.10+ first (e.g. \`brew install python\`)."
+}
+
+scrapling_installed() {
+  [[ -x "$VENV_SCRAPLING" ]]
+}
+
+# ── install ─────────────────────────────────────────────────────────────────
+do_install() {
+  require_python3
+
+  if scrapling_installed; then
+    echo "superagent-scrape: scrapling already installed at $VENV_SCRAPLING (skipping)"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$SCRAPLING_VENV")"
+
+  if [[ ! -x "$VENV_PY" ]]; then
+    echo "superagent-scrape: creating venv at $SCRAPLING_VENV"
+    python3 -m venv "$SCRAPLING_VENV" \
+      || die "failed to create venv at $SCRAPLING_VENV"
+  fi
+
+  echo "superagent-scrape: installing $MIN_SPEC into venv"
+  "$VENV_PY" -m pip install --upgrade pip >/dev/null \
+    || die "pip upgrade failed"
+  "$VENV_PY" -m pip install "$MIN_SPEC" \
+    || die "pip install $MIN_SPEC failed"
+
+  echo "superagent-scrape: running 'scrapling install --force' (browser deps)"
+  "$VENV_SCRAPLING" install --force \
+    || die "'scrapling install --force' failed"
+
+  echo "superagent-scrape: install complete."
+}
+
+# ── ensure (lazy install on first scrape call) ──────────────────────────────
+ensure_installed() {
+  if ! scrapling_installed; then
+    echo "superagent-scrape: scrapling not installed — bootstrapping..." >&2
+    echo "superagent-scrape: (run 'superagent-scrape install' to do this explicitly)" >&2
+    do_install
+  fi
+}
+
+# ── fetch ───────────────────────────────────────────────────────────────────
+do_fetch() {
+  local url="${1:-}"
+  shift || true
+  [[ -n "$url" ]] || { usage; exit 2; }
+  ensure_installed
+  # Pass through any remaining flags (e.g. --ai-targeted) verbatim.
+  exec "$VENV_SCRAPLING" extract get "$url" "$@"
+}
+
+# ── browser ─────────────────────────────────────────────────────────────────
+do_browser() {
+  local url="${1:-}"
+  shift || true
+  [[ -n "$url" ]] || { usage; exit 2; }
+  ensure_installed
+  exec "$VENV_SCRAPLING" extract fetch "$url" "$@"
+}
+
+# ── status ──────────────────────────────────────────────────────────────────
+do_status() {
+  echo "venv:      $SCRAPLING_VENV"
+  if [[ -x "$VENV_PY" ]]; then
+    echo "python:    $("$VENV_PY" --version 2>&1)"
+  else
+    echo "python:    (not installed — run 'superagent-scrape install')"
+  fi
+  if scrapling_installed; then
+    echo "scrapling: $("$VENV_SCRAPLING" --version 2>&1 || echo unknown)"
+  else
+    echo "scrapling: (not installed — run 'superagent-scrape install')"
+  fi
+}
+
+# ── dispatch ────────────────────────────────────────────────────────────────
+if [[ $# -lt 1 ]]; then
+  usage
+  exit 0
+fi
+
+cmd="$1"
+shift || true
+
+case "$cmd" in
+  install)        do_install "$@" ;;
+  fetch)          do_fetch "$@" ;;
+  browser)        do_browser "$@" ;;
+  status)         do_status "$@" ;;
+  --help|-h|help) usage ;;
+  *)              echo "superagent-scrape: unknown subcommand: $cmd" >&2; usage; exit 2 ;;
+esac

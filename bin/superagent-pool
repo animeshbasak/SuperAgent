@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# superagent-pool — thin distillation of octogent's multi-Claude-Code orchestration.
+# Subcommands: list [--json] | spawn <description> | tag <session-id> <description>
+#              | kill <session-id> | status | -h|--help
+#
+# Cooperative dispatch model: `spawn` emits a JSON directive — the calling agent
+# is responsible for invoking the Agent tool. We never fork a Claude process here.
+#
+# Credit: github.com/hesamsheikh/octogent (Hesam Sheikh).
+set -euo pipefail
+
+POOL_ROOT="$HOME/.superagent/pool"
+CLAUDE_PROJECTS="$HOME/.claude/projects"
+TAGS_FILE="$POOL_ROOT/tags.jsonl"
+ABANDONS_FILE="$POOL_ROOT/abandons.jsonl"
+
+mkdir -p "$POOL_ROOT" 2>/dev/null || true
+
+usage() {
+  cat <<'EOF'
+Usage: superagent-pool <subcommand> [args]
+
+Subcommands:
+  list [--json]                   Enumerate Claude Code sessions under ~/.claude/projects/.
+  spawn <description>             Emit a JSON dispatch directive for a new scoped agent.
+  tag <session-id> <description>  Tag an existing session (appends to ~/.superagent/pool/tags.jsonl).
+  kill <session-id>               Mark a session abandoned (appends to ~/.superagent/pool/abandons.jsonl).
+                                   Does NOT kill the OS process — we don't own it.
+  status                          Summary: N active / N tagged / N abandoned.
+  -h | --help                     Show this help.
+
+State:
+  ~/.superagent/pool/tags.jsonl
+  ~/.superagent/pool/abandons.jsonl
+
+Read-only sources:
+  ~/.claude/projects/<project>/<session-id>.jsonl   (Claude Code's own logs)
+
+Pattern credit: github.com/hesamsheikh/octogent
+EOF
+}
+
+now_iso() { python3 -c "import datetime; print(datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z'))"; }
+short_hash() { python3 -c "import os,binascii; print(binascii.hexlify(os.urandom(4)).decode())"; }
+
+cmd="${1:-}"
+case "$cmd" in
+  -h|--help|"")
+    usage
+    exit 0
+    ;;
+
+  list)
+    JSON=0
+    [[ "${2:-}" == "--json" ]] && JSON=1
+    python3 - "$CLAUDE_PROJECTS" "$JSON" <<'PY'
+import json, os, sys
+root, want_json = sys.argv[1], sys.argv[2] == "1"
+sessions = []
+if os.path.isdir(root):
+    for proj in sorted(os.listdir(root)):
+        pdir = os.path.join(root, proj)
+        if not os.path.isdir(pdir):
+            continue
+        for fname in sorted(os.listdir(pdir)):
+            if not fname.endswith(".jsonl"):
+                continue
+            fpath = os.path.join(pdir, fname)
+            try:
+                st = os.stat(fpath)
+            except OSError:
+                continue
+            sessions.append({
+                "project": proj,
+                "sessionId": fname[:-len(".jsonl")],
+                "lastModified": int(st.st_mtime),
+                "sizeBytes": st.st_size,
+            })
+if want_json:
+    print(json.dumps({"sessions": sessions}))
+else:
+    if not sessions:
+        print("(no sessions found under ~/.claude/projects/)")
+    else:
+        print(f"{'PROJECT':<40} {'SESSION-ID':<40} {'LAST-MOD':<12} {'SIZE':>8}")
+        for s in sessions:
+            print(f"{s['project'][:38]:<40} {s['sessionId'][:38]:<40} {s['lastModified']:<12} {s['sizeBytes']:>8}")
+PY
+    ;;
+
+  spawn)
+    DESC="${2:-}"
+    if [[ -z "$DESC" ]]; then
+      echo "Usage: superagent-pool spawn <description>" >&2
+      exit 1
+    fi
+    TAG=$(short_hash)
+    CWD=$(pwd)
+    python3 - "$DESC" "$CWD" "$TAG" <<'PY'
+import json, sys
+desc, cwd, tag = sys.argv[1], sys.argv[2], sys.argv[3]
+print(json.dumps({
+    "directive": "spawn-claude",
+    "cwd": cwd,
+    "description": desc,
+    "sessionTag": tag,
+}))
+PY
+    ;;
+
+  tag)
+    SID="${2:-}"
+    DESC="${3:-}"
+    if [[ -z "$SID" || -z "$DESC" ]]; then
+      echo "Usage: superagent-pool tag <session-id> <description>" >&2
+      exit 1
+    fi
+    TS=$(now_iso)
+    python3 - "$TAGS_FILE" "$SID" "$DESC" "$TS" <<'PY'
+import json, sys
+path, sid, desc, ts = sys.argv[1:5]
+rec = {"sessionId": sid, "description": desc, "ts": ts}
+with open(path, "a") as f:
+    f.write(json.dumps(rec) + "\n")
+print(f"tagged: {sid}")
+PY
+    ;;
+
+  kill)
+    SID="${2:-}"
+    if [[ -z "$SID" ]]; then
+      echo "Usage: superagent-pool kill <session-id>" >&2
+      exit 1
+    fi
+    TS=$(now_iso)
+    python3 - "$ABANDONS_FILE" "$SID" "$TS" <<'PY'
+import json, sys
+path, sid, ts = sys.argv[1:4]
+rec = {"action": "abandon", "sessionId": sid, "ts": ts}
+with open(path, "a") as f:
+    f.write(json.dumps(rec) + "\n")
+print(f"abandoned: {sid} (OS process untouched)")
+PY
+    ;;
+
+  status)
+    python3 - "$CLAUDE_PROJECTS" "$TAGS_FILE" "$ABANDONS_FILE" <<'PY'
+import json, os, sys
+root, tags_path, ab_path = sys.argv[1:4]
+n_active = 0
+if os.path.isdir(root):
+    for proj in os.listdir(root):
+        pdir = os.path.join(root, proj)
+        if not os.path.isdir(pdir):
+            continue
+        n_active += sum(1 for f in os.listdir(pdir) if f.endswith(".jsonl"))
+def count_lines(p):
+    if not os.path.isfile(p):
+        return 0
+    with open(p) as f:
+        return sum(1 for line in f if line.strip())
+n_tagged = count_lines(tags_path)
+n_abandoned = count_lines(ab_path)
+print(f"active sessions: {n_active}")
+print(f"tagged:          {n_tagged}")
+print(f"abandoned:       {n_abandoned}")
+PY
+    ;;
+
+  *)
+    echo "superagent-pool: unknown subcommand '$cmd'" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

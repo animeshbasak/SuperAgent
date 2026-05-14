@@ -4,6 +4,47 @@ All notable changes to SuperAgent are documented here.
 
 ---
 
+## v3.0.0 — 2026-05-14 (References Integration Pack — v3 capstone)
+
+The v3 capstone release. Closes the trilogy (v2.4 Wave 1 / v2.5 Wave 2 / v2.6 Wave 3) by absorbing best-of from three upstream projects in `references/`.
+
+### Added
+
+- **`scraping` skill + `bin/superagent-scrape`** — distilled from [Scrapling](https://github.com/D4Vinci/Scrapling) (D4Vinci). Adopts the upstream AgentSkill-spec SKILL.md; wraps the Python library via a thin bash CLI (install / fetch / browser / status). Per-user venv at `~/.superagent/scraping/.venv` (lazy install). `--ai-targeted` prompt-injection protection preserved.
+- **`agent-pool` skill + `bin/superagent-pool`** — distilled from [Octogent](https://github.com/hesamsheikh/octogent) (Hesam Sheikh). Multi-Claude-Code parallel-session orchestration. Cooperative model: `spawn` emits a directive (no daemon, no process forking); the calling skill invokes the Agent tool. State lives at `~/.superagent/pool/{tags,abandons}.jsonl`. Distinguishes from Wave 2 specialist agents in its SKILL.md hand-off table.
+- **`dynamic-skills` skill + `bin/superagent-reload`** — distilled from [jcode](https://github.com/1jehuang/jcode) (1jehuang) PLAN_MCP_SKILLS.md Phase 1. Bash equivalent of "rescan + reload" — `list / sync / diff / status` subcommands. Honestly documents the limit: Claude Code doesn't expose a runtime skill-reload API to hooks, so the bin updates files; user/agent triggers the rescan via `/reload` or session restart.
+
+### Changed
+
+- `skills/superagent/brain/rules.yaml` gains 3 new rules: `scraping`, `agent-pool`, `dynamic-skills`.
+- All 7 adapters recompiled (32 skills + core = 33 rules; Continue, Windsurf, Gemini regenerated cleanly).
+
+### Migration
+
+- No state migration required. New state subdirs (`~/.superagent/scraping/`, `~/.superagent/pool/`) are auto-created by their respective bins on first use.
+- Existing v2.6 installs picking up v3.0.0 should re-run `bash install.sh` to install the 3 new bins to `~/.local/bin/`.
+
+### Bench
+
+- 45 prompts (3 added for the new skills: scraping, agent-pool, dynamic-skills). Hard gate ≥85% maintained; current AVG 1.000.
+
+### Stats
+
+- 32 skills (was 29 in v2.6)
+- 22 bins (was 19 in v2.6)
+- 6 specialist dispatch agents
+- 9 Claude Code hooks
+- 45/45 bench prompts pass
+- 58+ smoke tests pass
+
+### Credits
+
+- [Scrapling](https://github.com/D4Vinci/Scrapling) by D4Vinci — original web-scraping framework + AgentSkill.
+- [Octogent](https://github.com/hesamsheikh/octogent) by Hesam Sheikh — original multi-Claude-Code orchestrator.
+- [jcode](https://github.com/1jehuang/jcode) by 1jehuang — original PLAN_MCP_SKILLS hot-reload design.
+
+---
+
 ## v2.6.0 — 2026-05-13 (Wave 3: Methodology & Quality)
 
 ### Added

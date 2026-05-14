@@ -2,15 +2,15 @@
 
 <img src="docs/media/hero-superagent.svg" alt="SuperAgent — the routing brain that lives between your AI and your code" width="900" />
 
-### One brain. Seven IDEs. 29 skills. 42/42 routing accuracy.
+### One brain. Seven IDEs. 32 skills. 45/45 routing accuracy.
 
 **Self-improving classifier. Per-prompt injection defense. 5-phase methodology gates. Per-diff risk scoring. Free local fallback. No rate limits.**
 
 [![Stars](https://img.shields.io/github/stars/animeshbasak/SuperAgent?style=social)](https://github.com/animeshbasak/SuperAgent)
 [![Platforms](https://img.shields.io/badge/platforms-8-blue)](#works-with-every-ai-coding-tool-you-use)
-[![Bench](https://img.shields.io/badge/bench-42%2F42%20PASS-brightgreen)](#receipts)
-[![Skills](https://img.shields.io/badge/skills-29-purple)](#the-29-skill-roster)
-[![Version](https://img.shields.io/badge/v2.6.0-Wave_3_Methodology-blueviolet)](#whats-new-in-v260--wave-3-methodology--quality)
+[![Bench](https://img.shields.io/badge/bench-45%2F45%20PASS-brightgreen)](#receipts)
+[![Skills](https://img.shields.io/badge/skills-32-purple)](#the-29-skill-roster)
+[![Version](https://img.shields.io/badge/v3.0.0-References_Integration_Pack-blueviolet)](#whats-new-in-v300--references-integration-pack)
 [![Token Savings](https://img.shields.io/badge/token_savings-95%25-brightgreen)](#receipts)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
@@ -25,7 +25,7 @@ bash SuperAgent/install.sh
 
 ## 30-second pitch
 
-SuperAgent is the layer between you and your AI coding tool. You write a task once. The brain classifies it against 29 skills, picks a chain, scans the prompt for injection, dispatches specialist work to 5 agent personas, enforces methodology gates when complexity warrants, scores every diff for blast radius before push, watches your budget, learns which chains actually worked, falls through to a free local model when limits hit — and writes the same instructions out to Cursor, Codex, Copilot, Gemini, Continue.dev, Windsurf, Aider, and Claude Code in their native formats.
+SuperAgent is the layer between you and your AI coding tool. You write a task once. The brain classifies it against 32 skills, picks a chain, scans the prompt for injection, dispatches specialist work to 5 agent personas, enforces methodology gates when complexity warrants, scores every diff for blast radius before push, watches your budget, learns which chains actually worked, falls through to a free local model when limits hit — and writes the same instructions out to Cursor, Codex, Copilot, Gemini, Continue.dev, Windsurf, Aider, and Claude Code in their native formats.
 
 **One config. Seven IDEs. Zero drift.**
 
@@ -38,6 +38,7 @@ SuperAgent is the layer between you and your AI coding tool. You write a task on
 | [**v2.4.0**](CHANGELOG.md#v240--2026-05-09-wave-1-foundation) | 1 — Foundation | Self-improving classifier (patterns.jsonl learning loop) · full 9-event Claude Code hook lifecycle · 4-dim cost tracker · per-day budget alerts + auto-downgrade |
 | [**v2.5.0**](CHANGELOG.md#v250--2026-05-12-wave-2-autonomous--safe) | 2 — Autonomous & Safe | AIDefence (58-pattern prompt injection + PII scanner) · 5 specialist dispatch agents · JSONL spans + metrics observability · `/loop` autopilot with budget gate |
 | [**v2.6.0**](CHANGELOG.md#v260--2026-05-13-wave-3-methodology--quality) | 3 — Methodology & Quality | SPARC 5-phase gate-enforced pipeline · Testgen coverage gap detection + scaffolding · Diff-risk classifier + impact + reviewer recommendation |
+| [**v3.0.0**](CHANGELOG.md#v300--2026-05-14-references-integration-pack--v3-capstone) | Capstone | References Integration Pack — `scraping` (Scrapling), `agent-pool` (Octogent), `dynamic-skills` (jcode). 32 skills, 22 bins, 45/45 bench. |
 
 Default-off where they add risk (AIDefence, Autopilot, SPARC); on where they're additive (observability, learning loop, cost tracker).
 
@@ -109,9 +110,9 @@ If all four return without error, the install worked. The full smoke run is in [
                             │
                             ▼
        ┌─────────────────────────────────────────────────────────┐
-       │  ④ EXECUTE       29 skills × 7 IDEs                     │
+       │  ④ EXECUTE       32 skills × 7 IDEs                     │
        │     SPARC gates · testgen · diff-risk · review · ship   │
-       │     bench: 42/42 PASS · AVG 1.000 · HARD GATE PASS      │
+       │     bench: 45/45 PASS · AVG 1.000 · HARD GATE PASS      │
        │     memory persists across sessions (mempalace)         │
        └────────────────────┬────────────────────────────────────┘
                             │
@@ -205,6 +206,20 @@ Plus **6 specialist dispatch agents** under [`agents/`](agents/): `architect`, `
 
 ---
 
+## What's new in v3.0.0 — References Integration Pack
+
+> The v3 capstone. Three upstream projects in `references/` distilled into native SuperAgent skills + bins.
+
+| Source project | Skill + bin | What it does |
+|---|---|---|
+| [**Scrapling**](https://github.com/D4Vinci/Scrapling) (D4Vinci) | `scraping` + `bin/superagent-scrape` | Anti-bot-aware web scraping (Cloudflare Turnstile bypass) via Scrapling's Python framework. Per-user venv at `~/.superagent/scraping/.venv`. Lazy install. `--ai-targeted` prompt-injection protection preserved. |
+| [**Octogent**](https://github.com/hesamsheikh/octogent) (Hesam Sheikh) | `agent-pool` + `bin/superagent-pool` | Multi-Claude-Code parallel-session orchestration. `spawn` emits cooperative directives (no daemon, no process forking). State at `~/.superagent/pool/`. Distinguishes from Wave 2 specialist agents (those dispatch *roles* in one session; pool dispatches *parallel sessions* with separate context windows). |
+| [**jcode**](https://github.com/1jehuang/jcode) (1jehuang) | `dynamic-skills` + `bin/superagent-reload` | Bash equivalent of jcode's PLAN_MCP_SKILLS Phase 1 — `list`/`sync`/`diff`/`status` for skill dirs. Honestly documents the limit: Claude Code doesn't expose a runtime skill-reload API to hooks, so the bin updates files; the user triggers the rescan via `/reload` or session restart. |
+
+Distilled, not vendored. Each upstream credited in its SKILL.md + this CHANGELOG.
+
+---
+
 ## What's new in v2.6.0 — Wave 3: Methodology & Quality
 
 > The brain now enforces methodology, hunts uncovered behavior, and rates every diff before push.
@@ -247,7 +262,7 @@ SuperAgent is the layer underneath. Write instructions once. Get them everywhere
 | **Cost tracker** | ✅ live | ✅ live | ✅ live | ✅ live | ✅ live | ✅ live | ✅ live | ✅ live |
 | **Specialist agents** | ✅ 5 + brain | dispatched as chain | dispatched as chain | dispatched as chain | dispatched as chain | dispatched as chain | dispatched as chain | dispatched as chain |
 
-`bin/superagent-compile` rewrites the same 29 skills into each platform's native rule format. Hooks fire only on Claude Code; every other platform self-polices via the `superagent-safety` skill.
+`bin/superagent-compile` rewrites the same 32 skills into each platform's native rule format. Hooks fire only on Claude Code; every other platform self-polices via the `superagent-safety` skill.
 
 ---
 
@@ -296,7 +311,7 @@ SuperAgent/
 │   ├── superagent-testgen   coverage gap + scaffolding
 │   ├── superagent-diff-risk classifier + impact + reviewers
 │   └── …
-├── skills/                  29 skills (source of truth)
+├── skills/                  32 skills (source of truth)
 ├── agents/                  6 specialist .md agents
 ├── hooks/                   9 Claude Code hooks
 ├── commands/                slash command dispatchers
@@ -329,7 +344,7 @@ Runtime state at `~/.superagent/`:
 
 ## FAQ
 
-**I'm on Cursor, not Claude Code. Does it work?** Yes. `bin/superagent-compile` turns 29 skills into Cursor `.mdc` rules, Codex `AGENTS.md`, Copilot instructions, Continue rules, etc. Hooks fire on Claude Code only; every other platform self-polices via the `superagent-safety` skill.
+**I'm on Cursor, not Claude Code. Does it work?** Yes. `bin/superagent-compile` turns 32 skills into Cursor `.mdc` rules, Codex `AGENTS.md`, Copilot instructions, Continue rules, etc. Hooks fire on Claude Code only; every other platform self-polices via the `superagent-safety` skill.
 
 **What if my Anthropic limit hits at 4pm?** The cost tracker watches your spend and drops `~/.superagent/auto-downgrade.flag` at 90% of daily budget. The `auto-fallback` skill reads this and shifts Opus → Sonnet → Haiku, or hands off to a local model (Ollama / qwen-coder / DeepSeek / llama.cpp) via the free-claude-code proxy on port `:18082`.
 
