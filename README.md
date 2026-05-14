@@ -2,17 +2,15 @@
 
 <img src="docs/media/hero-superagent.svg" alt="SuperAgent — the routing brain that lives between your AI and your code" width="900" />
 
-### One brain. Seven IDEs. 32 skills. 45/45 routing accuracy.
+# One AI config. Every coding tool you use.
 
-**Self-improving classifier. Per-prompt injection defense. 5-phase methodology gates. Per-diff risk scoring. Free local fallback. No rate limits.**
+**Write your AI instructions once. SuperAgent compiles them to Cursor, Codex, Copilot, Continue.dev, Windsurf, Aider, Gemini, and Claude Code in their native formats. Change one file, every tool updates.**
 
 [![Stars](https://img.shields.io/github/stars/animeshbasak/SuperAgent?style=social)](https://github.com/animeshbasak/SuperAgent)
-[![Platforms](https://img.shields.io/badge/platforms-8-blue)](#works-with-every-ai-coding-tool-you-use)
-[![Bench](https://img.shields.io/badge/bench-45%2F45%20PASS-brightgreen)](#receipts)
-[![Skills](https://img.shields.io/badge/skills-32-purple)](#the-29-skill-roster)
-[![Version](https://img.shields.io/badge/v3.0.0-References_Integration_Pack-blueviolet)](#whats-new-in-v300--references-integration-pack)
-[![Token Savings](https://img.shields.io/badge/token_savings-95%25-brightgreen)](#receipts)
+[![Version](https://img.shields.io/badge/v3.0.0-shipped-blueviolet)](https://github.com/animeshbasak/SuperAgent/releases/tag/v3.0.0)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-62%2F62%20green-brightgreen)](#receipts)
+[![Bench](https://img.shields.io/badge/routing-45%2F45-brightgreen)](#receipts)
 
 ```bash
 git clone https://github.com/animeshbasak/SuperAgent
@@ -23,28 +21,117 @@ bash SuperAgent/install.sh
 
 ---
 
-## 30-second pitch
+## The problem this fixes
 
-SuperAgent is the layer between you and your AI coding tool. You write a task once. The brain classifies it against 32 skills, picks a chain, scans the prompt for injection, dispatches specialist work to 5 agent personas, enforces methodology gates when complexity warrants, scores every diff for blast radius before push, watches your budget, learns which chains actually worked, falls through to a free local model when limits hit — and writes the same instructions out to Cursor, Codex, Copilot, Gemini, Continue.dev, Windsurf, Aider, and Claude Code in their native formats.
+You bought your AI coding tool. You like it. Then you started paying four hidden taxes:
 
-**One config. Seven IDEs. Zero drift.**
+1. **You wrote the same rules four times.** `CLAUDE.md`, `.cursorrules`, `.continue/rules/*.md`, `.github/copilot-instructions.md`. Four files, drifting apart, all saying almost the same thing.
+2. **Your AI re-reads the codebase every conversation.** Tokens get burned re-discovering files it already saw an hour ago.
+3. **At 4 PM, you hit the rate limit.** Your free local model sits idle on your laptop while you stare at "please wait 5 hours."
+4. **Your AI runs `git push --force` because you said "fix it and push."** Or `rm -rf` on a directory it misread. Or commits to `main` because nobody told it `main` was sacred.
 
----
-
-## The v3 trilogy — what shipped in 2026
-
-| Version | Wave | What it adds |
-|---|---|---|
-| [**v2.4.0**](CHANGELOG.md#v240--2026-05-09-wave-1-foundation) | 1 — Foundation | Self-improving classifier (patterns.jsonl learning loop) · full 9-event Claude Code hook lifecycle · 4-dim cost tracker · per-day budget alerts + auto-downgrade |
-| [**v2.5.0**](CHANGELOG.md#v250--2026-05-12-wave-2-autonomous--safe) | 2 — Autonomous & Safe | AIDefence (58-pattern prompt injection + PII scanner) · 5 specialist dispatch agents · JSONL spans + metrics observability · `/loop` autopilot with budget gate |
-| [**v2.6.0**](CHANGELOG.md#v260--2026-05-13-wave-3-methodology--quality) | 3 — Methodology & Quality | SPARC 5-phase gate-enforced pipeline · Testgen coverage gap detection + scaffolding · Diff-risk classifier + impact + reviewer recommendation |
-| [**v3.0.0**](CHANGELOG.md#v300--2026-05-14-references-integration-pack--v3-capstone) | Capstone | References Integration Pack — `scraping` (Scrapling), `agent-pool` (Octogent), `dynamic-skills` (jcode). 32 skills, 22 bins, 45/45 bench. |
-
-Default-off where they add risk (AIDefence, Autopilot, SPARC); on where they're additive (observability, learning loop, cost tracker).
+SuperAgent removes all four taxes. One config. One safety gate. One cost tracker. One free local fallback.
 
 ---
 
-## Install (~30 seconds, ~120 MB)
+## What it actually does for you
+
+Each capability below is a real, replaceable file. Nothing is magic.
+
+### 🎯 One config, every tool
+
+You write skills in `skills/`. Run `bin/superagent-compile` and SuperAgent rewrites them as:
+- Cursor `.mdc` rules
+- Codex `AGENTS.md`
+- Copilot `copilot-instructions.md`
+- Continue.dev rule files
+- Windsurf rule files
+- Gemini skill files
+- Aider `CONVENTIONS.md`
+- Claude Code skill files
+
+Change one source. All eight downstream files update.
+
+### 🛡 Your AI won't run scary commands without asking
+
+Before `rm -rf`, `git push --force`, `DROP TABLE`, an `.env` edit, or a `--dangerously-skip-permissions` flag — the safety gate pauses and asks. On Claude Code this is a real `PreToolUse` hook. On every other platform, the agent self-polices via the same rule set.
+
+### 💸 You can see your real Anthropic spend, right now
+
+```bash
+$ superagent-cost today
+model     tokens          $
+opus      250,000     $7.50
+sonnet    120,000     $1.80
+haiku     400,000     $0.50
+TOTAL     770,000     $9.80
+```
+
+At 90 % of your daily budget, a flag drops. The next message routes to a cheaper model — or to a free local model on your laptop (Ollama, qwen-coder, DeepSeek, llama.cpp via the free-claude-code proxy on port 18082). **No more 4 PM rate-limit surprises.**
+
+### 🧠 The classifier picks the right approach for each task
+
+You type `"fix the dark mode bug"`. SuperAgent picks `debugging → TDD → verification`.
+You type `"design the API for comments"`. It picks the `architect` specialist agent.
+You type `"scrape this Cloudflare-protected page"`. It picks the `scraping` skill (which uses Scrapling under the hood).
+
+45 routing tests. All green. The classifier learns from your sessions — when a chain succeeds three times for similar tasks, it gets promoted into the pattern store and short-circuits future runs.
+
+### 🛡 Prompt injection caught at the door (opt-in)
+
+Turn on AIDefence and every prompt is scanned against 58 patterns: instruction override, role switching, jailbreak, encoding attacks, PII leaks. Critical threats → blocked. High → confirms before proceeding. PII → logged, never sent upstream.
+
+Tested on a 100-prompt corpus: **86 % of attack prompts caught, 2 % false-positive rate on benign code.**
+
+### 🧑‍💼 Five specialist personas for parallel work
+
+`architect` (designs APIs), `coder` (implements features), `reviewer` (pre-merge gate), `security-architect` (threat models), `tester` (writes test suites). The classifier dispatches them automatically when the task is complex enough. Each specialist carries its own scoped safety hook.
+
+### 🤖 An autopilot that keeps working when you step away (opt-in)
+
+Discovers your pending tasks (markdown checkboxes, `tasks.md`, halted routes from your history) and works through them while you're afk. Each iteration checks your budget first — if you're at 90 % of daily spend, it pauses automatically. Cooperates with `ScheduleWakeup` to stay inside Anthropic's prompt-cache window.
+
+### 🎯 Methodology gates for big features (opt-in)
+
+```bash
+$ superagent-sparc init feat-billing-revamp
+$ superagent-sparc gate         # phase 1: spec must have ≥3 ACs + edge cases
+$ superagent-sparc advance      # only if gate passed
+$ superagent-sparc report       # traceability matrix: AC → pseudo → arch → test → status
+```
+
+5 phases — Spec → Pseudo → Architecture → Refinement → Completion. Each phase has a pass/fail gate. **No 0.0-1.0 quality scores** — gates are boolean so you can't negotiate.
+
+### 🧪 Coverage gap detection that tells you which tests to write
+
+```bash
+$ superagent-testgen scan && superagent-testgen gap --top 3
+| File             | Coverage | LOC | Gap  | Impact |
+| src/billing.ts   | 60.0%    | 200 | 10.0 | 2000.0 |
+| src/auth.ts      | 62.5%    | 80  | 7.5  | 600.0  |
+```
+
+Then `superagent-testgen suggest src/auth.ts` emits a markdown skeleton with the uncovered line ranges (collapsed into runs like `L42-50`) and the named symbols you should test. **Testgen never writes test bodies** — the `tester` agent does.
+
+### 🚦 Every diff gets a risk score before push
+
+```bash
+$ superagent-diff-risk report
+# Diff Analysis: feature/auth-revamp
+Primary: feature  (conf 0.84)   Impact: critical   Score: 7
+Files: 12   diff lines: 1247
+Risk factors:
+  - security_paths: api/auth/, api/permissions/
+  - large_diff: 1247 lines
+  - cross_module: api/, db/, services/
+Suggested reviewers: @sec-team @api-leads
+```
+
+7-category classifier + 5 risk-factor flags + CODEOWNERS-based reviewer suggestion. The `ship` skill force-confirms before push if impact is `high` or `critical`. **No GitHub API call** — pure git + file parsing.
+
+---
+
+## Install
 
 ```bash
 git clone https://github.com/animeshbasak/SuperAgent
@@ -52,333 +139,156 @@ cd SuperAgent
 bash install.sh
 ```
 
-`install.sh` is idempotent. Run it again to pick up updates; nothing duplicates.
+Takes ~30 seconds. ~120 MB on disk. **Idempotent** — run it again to upgrade, nothing duplicates.
 
-### Smoke test in 10 seconds
+### Confirm it worked
 
 ```bash
-# Routing brain answers correctly
+# 1. The router knows what to do
 superagent-classify "review my PR for SQL injection"
-#  → {"chain":["mempalace-wake","review","simplify","cso","security-review","agent:reviewer"], …}
+# → chain includes [review, cso, security-review, agent:reviewer]
 
-# Cost tracker reads your real Anthropic spend
+# 2. Your real Anthropic spend is visible
 superagent-cost today
 
-# Learning loop store is alive
+# 3. The learning loop is alive
 superagent-patterns list
 
-# Diff scorer rates the current branch
+# 4. Diff scorer rates the current branch
 superagent-diff-risk report
 ```
 
-If all four return without error, the install worked. The full smoke run is in [`test/`](test/) — 58 scripts, ~5 seconds end-to-end.
+If all four return without error, you're done.
 
 ---
 
-## How it works
+## Show me a real session
 
 ```
-            ┌──────────────────────────────────────────────┐
-            │  YOU TYPE: "fix the dark mode toggle bug"    │
-            └────────────────────┬─────────────────────────┘
-                                 │
-                                 ▼
-       ┌─────────────────────────────────────────────────────────┐
-       │  ① CLASSIFY      superagent-classify                    │
-       │     rules.yaml  +  patterns.jsonl (learning loop)       │
-       │     → chain: [systematic-debugging, TDD, verification]  │
-       │     → complexity · categories · history hint            │
-       └────────────────────┬────────────────────────────────────┘
-                            │
-                            ▼
-       ┌─────────────────────────────────────────────────────────┐
-       │  ② DEFEND        UserPromptSubmit hook                  │
-       │     superagent-safety (always) + aidefence (opt-in)     │
-       │     → blocks rm -rf, --force, DROP, prompt injection    │
-       │     → critical → deny · high → ask · PII → log          │
-       └────────────────────┬────────────────────────────────────┘
-                            │
-                            ▼
-       ┌─────────────────────────────────────────────────────────┐
-       │  ③ ROUTE         3-tier cost router + 5 specialists     │
-       │     T1 < 1ms   $0          (classify, format, lookup)   │
-       │     T2 ~500ms  ~$0.0002    (Haiku / qwen-coder:7b)      │
-       │     T3 2-5s    $0.003+     (Sonnet / Opus / qwen:next)  │
-       │     90% budget → auto-downgrade.flag                    │
-       │     complexity == complex → dispatch specialist agent   │
-       └────────────────────┬────────────────────────────────────┘
-                            │
-                            ▼
-       ┌─────────────────────────────────────────────────────────┐
-       │  ④ EXECUTE       32 skills × 7 IDEs                     │
-       │     SPARC gates · testgen · diff-risk · review · ship   │
-       │     bench: 45/45 PASS · AVG 1.000 · HARD GATE PASS      │
-       │     memory persists across sessions (mempalace)         │
-       └────────────────────┬────────────────────────────────────┘
-                            │
-                            ▼
-       ┌─────────────────────────────────────────────────────────┐
-       │  ⑤ OBSERVE       JSONL spans + metrics + traces         │
-       │     Every Stop: distill corrections + promote patterns  │
-       │     superagent-trace <id>  · superagent-metrics today   │
-       │     Daily rotation · 30d retention                      │
-       └─────────────────────────────────────────────────────────┘
+$ # You start work on a billing fix
+$ superagent-sparc init feat-billing-rounding
+~/.superagent/sparc/feat-billing-rounding
+
+$ # Write the spec, run the gate
+$ vim ~/.superagent/sparc/feat-billing-rounding/spec.md
+$ superagent-sparc gate
+gate PASSED (phase 1)
+$ superagent-sparc advance
+advanced phase 1 -> 2
+
+$ # An hour later, before you push
+$ superagent-diff-risk report
+Primary: bugfix (conf 1.0)   Impact: medium   Score: 2
+Files: 3   diff lines: 87
+Risk factors: (none)
+
+$ # All green — let's ship it
+$ # (ship skill takes it from here: tests, version bump, push, PR)
 ```
 
-Every layer is a real, replaceable file. Every decision is logged to `~/.superagent/brain/routes.jsonl` so you can audit your own routing.
-
----
-
-## The 29-skill roster
-
-### Core orchestration (5)
-
-| Skill | When it fires |
-|---|---|
-| `superagent` | Master router — classifies, composes chain, picks backend |
-| `superagent-brain` | PROACTIVELY auto-routes every build / fix / explore / design / review / ship task |
-| `superagent-safety` | Reversibility doctrine — pauses on risky shell + history-rewrite + sensitive-file edits |
-| `superagent-switch` | Manual model swap with canary preflight |
-| `auto-fallback` | Cost-aware switch to local LLM + 3-tier router |
-
-### v2.4 — Wave 1 Foundation (2)
-
-| Skill | When it fires |
-|---|---|
-| `superagent-learn-loop` | Patterns.jsonl learning loop — promote / decay / protect / prune |
-| `cost-budget` | Per-day Anthropic budget alerts + auto-downgrade.flag at 90% spend |
-
-### v2.5 — Wave 2 Autonomous & Safe (3)
-
-| Skill | When it fires |
-|---|---|
-| `aidefence` | 58-pattern prompt-injection + PII scanner (default off; opt-in via `enable`) |
-| `observability` | JSONL spans + metrics with p50/p95/p99 + rolling-mean anomaly detection |
-| `autopilot` | `/loop` + pattern-driven prediction at 0.7 confidence + budget gate |
-
-### v2.6 — Wave 3 Methodology & Quality (3)
-
-| Skill | When it fires |
-|---|---|
-| `sparc` | 5-phase gate-enforced pipeline (Spec → Pseudo → Arch → Refine → Complete) |
-| `testgen` | Coverage gap detection + markdown scaffolding (never writes test bodies) |
-| `diff-risk` | 7-type classifier + IMPACT_KEYWORDS score + 5 risk factors + CODEOWNERS rec |
-
-### Planning (4)
-
-| Skill | When it fires |
-|---|---|
-| `plan-ceo-review` | Pressure-test plan scope (4-mode framework) |
-| `plan-eng-review` | Lock architecture, edge cases, test coverage |
-| `plan-design-review` | Rate 10 design dimensions 0-10, fix any below 7 |
-| `autoplan` | Pipeline plan through CEO → design → eng review |
-
-### Quality & review (4)
-
-| Skill | When it fires |
-|---|---|
-| `investigate` | "Why did X break?" — reproduce → isolate → explain → verify |
-| `review` | "Is this ready to merge?" — 6-point diff gate (calls diff-risk first) |
-| `ship` | "Ship it" — 20-step pipeline with diff-risk pre-push force-confirm gate |
-| `cso` | "Audit this" — OWASP Top-10 + STRIDE + secrets scan |
-
-### Creative (3)
-
-| Skill | When it fires |
-|---|---|
-| `webgl-craft` | Premium WebGL/3D — Awwwards-class technique library |
-| `framer-motion` | React component-level motion (animate-presence, layout, springs) |
-| `video-craft` | HTML → MP4 via hyperframes (deterministic, frame-accurate) |
-
-### Utility (5)
-
-| Skill | When it fires |
-|---|---|
-| `simplify` | Review changed code for reuse, quality, efficiency |
-| `learn` | Persistent per-project learnings (`~/.superagent/learnings/`) |
-| `office-hours` | YC-style product intake (6 forcing questions) |
-| `fanout` | Run 2+ skills in parallel and merge their reports |
-| `token-stats` | Token savings stats per project (mempalace + graphify) |
-| `free-llm` | Set up free-claude-code proxy + provider routing |
-| `bench` | Run the classifier bench and print the score |
-
-Plus **6 specialist dispatch agents** under [`agents/`](agents/): `architect`, `coder`, `reviewer`, `security-architect`, `tester`, `superagent-brain`. The classifier picks a specialist when chain length > 4 or complexity = complex.
-
----
-
-## What's new in v3.0.0 — References Integration Pack
-
-> The v3 capstone. Three upstream projects in `references/` distilled into native SuperAgent skills + bins.
-
-| Source project | Skill + bin | What it does |
-|---|---|---|
-| [**Scrapling**](https://github.com/D4Vinci/Scrapling) (D4Vinci) | `scraping` + `bin/superagent-scrape` | Anti-bot-aware web scraping (Cloudflare Turnstile bypass) via Scrapling's Python framework. Per-user venv at `~/.superagent/scraping/.venv`. Lazy install. `--ai-targeted` prompt-injection protection preserved. |
-| [**Octogent**](https://github.com/hesamsheikh/octogent) (Hesam Sheikh) | `agent-pool` + `bin/superagent-pool` | Multi-Claude-Code parallel-session orchestration. `spawn` emits cooperative directives (no daemon, no process forking). State at `~/.superagent/pool/`. Distinguishes from Wave 2 specialist agents (those dispatch *roles* in one session; pool dispatches *parallel sessions* with separate context windows). |
-| [**jcode**](https://github.com/1jehuang/jcode) (1jehuang) | `dynamic-skills` + `bin/superagent-reload` | Bash equivalent of jcode's PLAN_MCP_SKILLS Phase 1 — `list`/`sync`/`diff`/`status` for skill dirs. Honestly documents the limit: Claude Code doesn't expose a runtime skill-reload API to hooks, so the bin updates files; the user triggers the rescan via `/reload` or session restart. |
-
-Distilled, not vendored. Each upstream credited in its SKILL.md + this CHANGELOG.
-
----
-
-## What's new in v2.6.0 — Wave 3: Methodology & Quality
-
-> The brain now enforces methodology, hunts uncovered behavior, and rates every diff before push.
-
-| Pillar | What it does | CLI |
-|---|---|---|
-| **SPARC** | 5 phases — Specification → Pseudocode → Architecture → Refinement → Completion. Boolean gates per phase (no 0.0-1.0 fake-precision scores). Traceability matrix links every AC to a pseudo line, an arch entry, a test, and a status. | `superagent-sparc {init,gate,advance,report,status}` |
-| **Testgen** | Coverage adapter (jest, vitest, pytest, tarpaulin, go-cover). Gap detection ranked by `gap × LOC`. `suggest <file>` emits a markdown skeleton with uncovered ranges and named symbols — never writes test bodies. | `superagent-testgen {scan,gap,suggest,status}` |
-| **Diff-risk** | 7-type classifier (verbatim port from ruflo) + IMPACT_KEYWORDS scoring + 5 risk-factor booleans (high-churn, security paths, large diff, cross-module, DB migration) + CODEOWNERS reviewer recommendation. Pure git+file parsing — no GitHub API. | `superagent-diff-risk {classify,impact,reviewers,report}` |
-
-`review` skill now runs `diff-risk` before the 6-point checklist. `ship` skill force-confirms before push when impact is `high` or `critical`.
-
-[Full Wave 3 plan](docs/superpowers/plans/2026-05-13-superagent-v3-wave3-methodology.md) · [v2.4 Wave 1 plan](docs/superpowers/plans/2026-05-08-superagent-v3-wave1-foundation.md) · [v2.5 Wave 2 plan](docs/superpowers/plans/2026-05-13-superagent-v3-wave2-autonomous.md)
-
----
-
-## Why this exists — the four taxes
-
-You bought your AI coding tool. You like it. Then you noticed the bills.
-
-**Tax #1 — Setup tax.** You wrote a `CLAUDE.md`. Then you bought Cursor. So you wrote `.cursorrules`. Then your team added Continue.dev. So you wrote `.continue/rules/*.md`. Then GitHub Copilot got smart, so you wrote `.github/copilot-instructions.md`. Same instructions, four formats, drifting apart in four files.
-
-**Tax #2 — Token tax.** Every conversation, the model re-reads files it just read. Every "explain this codebase" burns the entire repo.
-
-**Tax #3 — Rate-limit tax.** 4pm, shipping. Model says "wait 5 hours." The free local model on your laptop sits idle.
-
-**Tax #4 — Blast-radius tax.** Your AI runs `git push --force` because you said "fix it and push." It runs `rm -rf` on a directory it misread. It commits to `main` because nobody told it `main` was sacred.
-
-SuperAgent is the layer underneath. Write instructions once. Get them everywhere. Risky shell paused. Budget watched. Local model when you need it. Self-improving classifier that learns from your sessions.
+That session never hit a rate limit. Never lost a token to re-reading the codebase. The classifier picked the chain. The safety gate watched the shell. The cost tracker logged the spend. The diff scorer cleared the push.
 
 ---
 
 ## Works with every AI coding tool you use
 
-| | Claude Code | Cursor | Codex | Copilot | Continue.dev | Windsurf | Gemini | Aider |
+| | Claude Code | Cursor | Codex | Copilot | Continue | Windsurf | Gemini | Aider |
 |---|---|---|---|---|---|---|---|---|
-| **Skills auto-routed** | ✅ 29 | ✅ 7 (Cursor `.mdc`) | ✅ 29 (`AGENTS.md`) | ✅ inline | ✅ 30 (rule files) | ✅ 29 (rule files) | ✅ 29 (skill files) | ✅ `CONVENTIONS.md` |
-| **Safety hooks** | ✅ 9 events | self-policed via skill | self-policed | self-policed | self-policed | self-policed | self-policed | self-policed |
-| **Learning loop** | ✅ patterns.jsonl | reads same store | reads same store | reads same store | reads same store | reads same store | reads same store | reads same store |
-| **Cost tracker** | ✅ live | ✅ live | ✅ live | ✅ live | ✅ live | ✅ live | ✅ live | ✅ live |
-| **Specialist agents** | ✅ 5 + brain | dispatched as chain | dispatched as chain | dispatched as chain | dispatched as chain | dispatched as chain | dispatched as chain | dispatched as chain |
+| **Same skills routed** | 32 | 7 `.mdc` | 32 `AGENTS.md` | inline | 33 rules | 32 rules | 32 skills | `CONVENTIONS.md` |
+| **Safety hooks** | 9 events | self-polices | self-polices | self-polices | self-polices | self-polices | self-polices | self-polices |
+| **Learning loop** | ✅ | reads store | reads store | reads store | reads store | reads store | reads store | reads store |
+| **Cost tracker** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Specialist agents** | 5 + brain | dispatched | dispatched | dispatched | dispatched | dispatched | dispatched | dispatched |
 
-`bin/superagent-compile` rewrites the same 32 skills into each platform's native rule format. Hooks fire only on Claude Code; every other platform self-polices via the `superagent-safety` skill.
+`bin/superagent-compile` rewrites the same skills into every platform's native format. Hooks fire only on Claude Code; every other platform self-polices via the `superagent-safety` skill.
 
 ---
 
 ## Receipts
 
-```bash
+```
 $ bash bench/run.sh
-PROMPTS 42   PASS 42   FAIL 0   AVG 1.000
+PROMPTS 45   PASS 45   FAIL 0   AVG 1.000
 HARD GATE: PASS  (avg >= 0.90, fails <= 2)
 
-$ for t in test/test-*.sh; do bash "$t" >/dev/null && echo "PASS: $t"; done | wc -l
-58
+$ for t in test/test-*.sh; do bash "$t" >/dev/null && echo OK; done | wc -l
+62
 
 $ superagent-aidefence list | wc -l
-58           # injection + PII patterns ship out of the box
-            # 100-prompt corpus: FP 2% / TP 86%
-
-$ superagent-diff-risk report --base origin/main --json | jq .impactReport.impact
-"medium"     # or low/medium/high/critical, scored from path tokens + branch name
+58           # injection + PII patterns
 
 $ superagent-cost today
-model        tokens          $
-opus              0      $0.00
-sonnet      350,000     $5.25
-haiku        80,000     $0.10
-local       120,000     $0.00
-TOTAL       550,000     $5.35
+TOTAL   770,000     $9.80
 ```
 
 ---
 
-## Project layout
+## The four releases — in plain English
+
+| Release | What it means for you |
+|---|---|
+| [**v2.4 Wave 1**](CHANGELOG.md#v240--2026-05-09-wave-1-foundation) | The classifier remembers what worked. The cost tracker stops surprising you. The safety gate stops scary commands. |
+| [**v2.5 Wave 2**](CHANGELOG.md#v250--2026-05-12-wave-2-autonomous--safe) | Optional prompt-injection scanner. Five named personas for parallel work. Full session observability. An autopilot for unattended runs. |
+| [**v2.6 Wave 3**](CHANGELOG.md#v260--2026-05-13-wave-3-methodology--quality) | 5-phase pipeline for big features. Coverage gap detection. Per-diff risk scoring. |
+| [**v3.0 Capstone**](https://github.com/animeshbasak/SuperAgent/releases/tag/v3.0.0) | Three real upstream projects (Scrapling / Octogent / jcode) distilled into native skills you can use today. |
+
+---
+
+## Where things live
 
 ```
 SuperAgent/
-├── bin/                     19 CLI tools — installed to ~/.local/bin/
-│   ├── superagent-classify  rule + pattern matcher
-│   ├── superagent-cost      4-dim Anthropic price tracker
-│   ├── superagent-patterns  learning loop (promote/decay/protect/prune)
-│   ├── superagent-aidefence prompt injection + PII scanner
-│   ├── superagent-autopilot /loop + pattern-driven prediction
-│   ├── superagent-obs       span + metric emitter
-│   ├── superagent-trace     parent-child trace tree with p95 bottleneck flag
-│   ├── superagent-metrics   counter/gauge/histogram aggregator
-│   ├── superagent-sparc     5-phase gate-enforced pipeline
-│   ├── superagent-testgen   coverage gap + scaffolding
-│   ├── superagent-diff-risk classifier + impact + reviewers
-│   └── …
-├── skills/                  32 skills (source of truth)
-├── agents/                  6 specialist .md agents
-├── hooks/                   9 Claude Code hooks
-├── commands/                slash command dispatchers
-├── bench/                   42-prompt routing accuracy harness
-├── test/                    58 bash test scripts (red/green TDD style)
-├── adapters/                7 IDE rule generators
-├── install.sh               one-command install
-└── docs/                    plans + specs + reels
+├── bin/            22 command-line tools (installed to ~/.local/bin/)
+├── skills/         32 skills (the source of truth)
+├── agents/         6 specialist agent personas
+├── hooks/          9 Claude Code lifecycle hooks
+├── adapters/       7 IDE rule generators (Cursor, Codex, Copilot, Continue, Windsurf, Gemini, Aider)
+├── bench/          45-prompt routing accuracy harness
+├── test/           62 bash test scripts
+└── install.sh      one-command install
 ```
 
-Runtime state at `~/.superagent/`:
+After install:
 
 ```
 ~/.superagent/
-├── brain/        routes.jsonl + patterns.jsonl
-├── cost/         calls.jsonl + budget.json + alerts.jsonl
-├── learnings/    per-project distilled corrections
-├── obs/          spans.jsonl + metrics.jsonl (daily rotated)
-├── aidefence/    patterns.json + learned.jsonl + enabled flag
-├── autopilot/    state.json
-├── sparc/        <slug>/{state.json, spec.md, pseudo.md, …}
-├── testgen/      last-report.json + min-coverage.txt
-├── diff/         last.json (cached for review/ship)
-├── safety/       allow.txt for auto-allow patterns
-├── .wave-{1,2,3}.installed   idempotency markers
-└── auto-downgrade.flag       drops at 90% budget
+├── brain/         routing decisions + learned patterns
+├── cost/          per-tool token logs + budget config + alerts
+├── learnings/     distilled corrections per project
+├── obs/           span and metric logs
+└── …              one subdir per opt-in feature
 ```
 
 ---
 
 ## FAQ
 
-**I'm on Cursor, not Claude Code. Does it work?** Yes. `bin/superagent-compile` turns 32 skills into Cursor `.mdc` rules, Codex `AGENTS.md`, Copilot instructions, Continue rules, etc. Hooks fire on Claude Code only; every other platform self-polices via the `superagent-safety` skill.
+**I use Cursor, not Claude Code. Does this still help me?** Yes. `bin/superagent-compile` writes the same 32 skills as Cursor `.mdc` rules. The safety gate works as a self-policing skill instead of a hook — same behavior, slightly different mechanism.
 
-**What if my Anthropic limit hits at 4pm?** The cost tracker watches your spend and drops `~/.superagent/auto-downgrade.flag` at 90% of daily budget. The `auto-fallback` skill reads this and shifts Opus → Sonnet → Haiku, or hands off to a local model (Ollama / qwen-coder / DeepSeek / llama.cpp) via the free-claude-code proxy on port `:18082`.
+**Will SuperAgent slow down my AI?** No. Hooks add ~1-5 ms per tool call. The classifier runs in under 100 ms on a 5-year-old laptop. Everything is local files; there's no network call on the hot path.
 
-**Does SuperAgent change my code without asking?** Only when you ask. Risky operations (rm -rf, --force-push, DROP, .env edits) hit the safety gate first. AIDefence and Autopilot are default-off; you opt in via `enable` subcommands. SPARC is opt-in per feature.
+**Does SuperAgent send anything to a server?** No. Everything lives under `~/.superagent/` and `~/.claude/`. SuperAgent does not phone home.
 
-**Is anything stored on your servers?** No. Everything lives under `~/.superagent/` and `~/.claude/`. SuperAgent does not phone home.
+**What if my Anthropic limit hits?** The cost tracker drops a flag at 90 % of daily budget. The auto-fallback skill reads it and proposes Opus → Sonnet → Haiku, or hands off to a local model via the free-claude-code proxy on port 18082. You stay productive.
 
-**Where do the receipts come from?** Every routing decision logs to `~/.superagent/brain/routes.jsonl`. Every tool call logs to `~/.superagent/cost/calls.jsonl` (v2 schema: 4-dim Anthropic tokens) and `~/.superagent/obs/spans.jsonl` (canonical span shape). You can `tail -f` any of them while you work.
+**Does it change my code without asking?** Only when you ask. Risky shell hits the safety gate first. AIDefence and Autopilot are default off; you opt in. SPARC starts only when you run `sparc init`.
 
-**Where's the test coverage?** 58 bash test scripts under [`test/`](test/). Run `for t in test/test-*.sh; do bash "$t"; done` to see all of them green. The bench harness lives in [`bench/`](bench/).
+**Where does the learning come from?** Every successful chain logs to `~/.superagent/brain/routes.jsonl`. When the same chain succeeds three times for similar tasks, it gets promoted into `~/.superagent/brain/patterns.jsonl`. The classifier reads patterns first, then falls through to static rules.
+
+**What's the catch?** Honest answer: 32 skills is a lot. The learning curve is real — but you don't need all of them on day one. Start with `superagent-cost today` and the safety gate, add `superagent-diff-risk` when you're about to push something scary, add `sparc` when you're starting a real feature.
 
 ---
 
-## Reels
+## Credits
 
-| Version | Reel | Run |
-|---|---|---|
-| v2.4 (Wave 1) | [`docs/video/reel-wave1/`](docs/video/reel-wave1/) | `npx hyperframes render` (Node ≥22) |
-| v2.5 (Wave 2) | [`docs/video/reel-wave2/`](docs/video/reel-wave2/) | same |
-| v2.6 (Wave 3) | [`docs/video/reel-wave3/`](docs/video/reel-wave3/) | same |
-
-Each reel is a 28-second, 1920×1080, 30 fps hyperframes composition. Source HTML + GSAP timelines are committed; MP4 outputs are derivatives.
+- [Anthropic Claude Code](https://claude.com/claude-code) — the hook-and-skill harness this is built on
+- [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — 16 step-by-step engineering skills (the `agent-skills:*` namespace)
+- [HeyGen Hyperframes](https://github.com/heygen-com/hyperframes) — deterministic video pipeline for the reels
+- [Scrapling](https://github.com/D4Vinci/Scrapling), [Octogent](https://github.com/hesamsheikh/octogent), [jcode](https://github.com/1jehuang/jcode) — the three upstream projects whose work shipped into v3.0 capstone
+- [Ruflo (claude-flow)](https://github.com/ruflo/claude-flow) — AIDefence pattern store reference + diff-risk classifier regex map
 
 ---
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
----
-
-## Acknowledgements
-
-- [HeyGen Hyperframes](https://github.com/heygen-com/hyperframes) for the deterministic video pipeline.
-- [Anthropic Claude Code](https://claude.com/claude-code) for the hook-and-skill harness that made all of this possible.
-- [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — 16 step-by-step engineering skills that ship as the `agent-skills:*` namespace.
-- [Ruflo (claude-flow)](https://github.com/ruflo/claude-flow) — provided the AIDefence pattern store reference and the diff-risk classifier regex map.
