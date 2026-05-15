@@ -334,27 +334,51 @@ cmd_canary() {
       fail_step="${steps[$i]}-missing"
       break
     fi
-    local expected_tool
+    local expected_tool input_json prompt schema
     expected_tool=$(jq -r '.tool' "$fixture")
+    input_json=$(jq -c '.input' "$fixture")
 
-    # POST a tool-call request to mock proxy. The mock returns a tool-call shape.
-    local resp http_code
-    resp=$(curl -fsS --max-time 5 \
+    # tool schema per fixture tool name (Anthropic Messages API tool definition)
+    case "$expected_tool" in
+      Read) schema='{"name":"Read","description":"Read a file from disk","input_schema":{"type":"object","properties":{"file_path":{"type":"string"}},"required":["file_path"]}}' ;;
+      Edit) schema='{"name":"Edit","description":"Edit a file by replacing old_string with new_string","input_schema":{"type":"object","properties":{"file_path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"}},"required":["file_path","old_string","new_string"]}}' ;;
+      Bash) schema='{"name":"Bash","description":"Execute a bash command","input_schema":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}}' ;;
+      *) fail_step="${steps[$i]}-unknown-tool:$expected_tool"; break ;;
+    esac
+
+    prompt="Call the ${expected_tool} tool with this exact input JSON: ${input_json}"
+
+    # Build a real Anthropic Messages request that forces a tool_use response
+    local req_body
+    req_body=$(jq -nc \
+      --argjson schema "$schema" \
+      --arg toolname "$expected_tool" \
+      --arg prompt "$prompt" \
+      '{
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 512,
+        stream: false,
+        tools: [$schema],
+        tool_choice: {type:"tool", name:$toolname},
+        messages: [{role:"user", content:$prompt}]
+      }')
+
+    local resp
+    resp=$(curl -fsS --max-time "${SUPERAGENT_CANARY_TIMEOUT:-90}" \
       -H "Authorization: Bearer ${PROXY_TOKEN}" \
+      -H "anthropic-version: 2023-06-01" \
       -H "Content-Type: application/json" \
       -X POST "$proxy_url/v1/messages" \
-      -d "$(jq -c --arg step "$((i+1))" --arg model "$model" \
-            '{step: ($step|tonumber), model: $model, expected: .tool}' "$fixture")" \
-      2>/dev/null) || {
+      -d "$req_body" 2>/dev/null) || {
         fail_step="${steps[$i]}-noresponse"
         break
       }
 
-    # parse and check tool name matches
+    # parse Anthropic response: look for content[].type=="tool_use" and verify name
     local got_tool
-    got_tool=$(echo "$resp" | jq -r '.tool // empty' 2>/dev/null || echo "")
+    got_tool=$(echo "$resp" | jq -r '[.content[]? | select(.type=="tool_use") | .name] | first // empty' 2>/dev/null || echo "")
     if [[ -z "$got_tool" ]]; then
-      fail_step="${steps[$i]}-malformed"
+      fail_step="${steps[$i]}-no-tool-use"
       break
     fi
     if [[ "$got_tool" != "$expected_tool" ]]; then
