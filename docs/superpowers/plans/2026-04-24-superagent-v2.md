@@ -67,7 +67,7 @@ Expected: `OK` printed; `~/.superagent/{brain,bench,learnings,chains,cost,logs}`
 Append to [install.sh](install.sh) after existing hook installation:
 ```bash
 # Step 11: Initialize superagent state root
-bash "$SCRIPT_DIR/hooks/superagent-state-init.sh"
+bash "$REPO_DIR/hooks/superagent-state-init.sh"
 ```
 
 - [ ] **Step 4: Commit**
