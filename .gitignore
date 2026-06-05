@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+.uv/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+
+# Large marketing binaries (tracked out-of-band, not in git)
+marketing/*.mp4
+marketing/*.wav
+marketing/reel/
