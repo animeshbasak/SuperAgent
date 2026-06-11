@@ -1,6 +1,7 @@
 """Command-line entry point for memory-os lifecycle jobs.
 
     superagent-memory decay [--dry-run] [--max-age-days N] [--idle-days N] [--namespace NS]
+    superagent-memory dedup [--dry-run] [--threshold T] [--namespace NS]
     superagent-memory cron  {install|uninstall|status}
 
 The MCP server itself is a separate console script (``superagent-memory-mcp``);
@@ -13,8 +14,9 @@ import argparse
 import json
 import sys
 
-from . import cron_install, db
+from . import cron_install, db, vector
 from .jobs import decay as decay_job
+from .jobs import dedup as dedup_job
 
 
 def _cmd_decay(args: argparse.Namespace) -> dict:
@@ -27,6 +29,25 @@ def _cmd_decay(args: argparse.Namespace) -> dict:
         dry_run=args.dry_run,
     )
     return result.to_dict()
+
+
+def _cmd_dedup(args: argparse.Namespace) -> dict:
+    # Dedup needs embeddings; refuse cleanly rather than embedding every row
+    # against a backend the user never opted into.
+    if not vector.is_enabled():
+        return {
+            "ok": False,
+            "reason": "vector-disabled",
+            "hint": "Semantic dedup needs embeddings. Enable with SUPERAGENT_MEMORY_VECTOR=on.",
+        }
+    conn = db.connect()
+    result = dedup_job.dedup(
+        conn,
+        namespace=args.namespace,
+        threshold=args.threshold,
+        dry_run=args.dry_run,
+    )
+    return {"ok": True, **result.to_dict()}
 
 
 def _cmd_cron(args: argparse.Namespace) -> dict:
@@ -47,6 +68,12 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--idle-days", type=int, default=decay_job.DEFAULT_IDLE_DAYS)
     d.add_argument("--namespace", default=None, help="limit to one namespace (default: all)")
     d.set_defaults(func=_cmd_decay)
+
+    dd = sub.add_parser("dedup", help="merge near-duplicate entries (needs SUPERAGENT_MEMORY_VECTOR=on)")
+    dd.add_argument("--dry-run", action="store_true", help="report without mutating")
+    dd.add_argument("--threshold", type=float, default=dedup_job.DEFAULT_THRESHOLD, help="cosine similarity to merge (0,1]")
+    dd.add_argument("--namespace", default=None, help="limit to one namespace (default: all)")
+    dd.set_defaults(func=_cmd_dedup)
 
     c = sub.add_parser("cron", help="schedule weekly decay (launchd/crontab)")
     c.add_argument("action", choices=["install", "uninstall", "status"])

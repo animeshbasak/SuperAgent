@@ -54,6 +54,8 @@ hooks or cron — not the MCP transport):
 superagent-memory decay --dry-run          # report stale entries, no changes
 superagent-memory decay                     # archive entries older than 90d AND idle 30d
 superagent-memory decay --max-age-days 180 --idle-days 60 --namespace <ns>
+superagent-memory dedup --dry-run           # report near-duplicate merges (needs SUPERAGENT_MEMORY_VECTOR=on)
+superagent-memory dedup                      # merge entries with cosine ≥0.92, namespace-scoped
 superagent-memory cron install              # schedule weekly decay (launchd on macOS, crontab elsewhere)
 superagent-memory cron status
 superagent-memory cron uninstall
@@ -61,8 +63,14 @@ superagent-memory cron uninstall
 
 Decay is a soft-delete (`forgotten = 1`, recorded in the `audit` table) and
 never touches pinned entries. Recall refreshes an entry's `last_access`, so
-frequently-used memory is never archived. Semantic dedup (Phase 4.2) is
-deferred until vector recall (Phase 5) lands.
+frequently-used memory is never archived.
+
+**Semantic dedup** (Phase 4.2, needs vector recall enabled) merges
+near-duplicate entries within a namespace: it embeds live non-pinned entries,
+greedily clusters by cosine similarity ≥0.92, keeps the most-accessed/oldest
+as canonical (folding the duplicates' access counts into it), and soft-deletes
+the rest — audited as `dedup` and removed from the vector index. Different
+namespaces are never merged.
 
 ## Storage
 

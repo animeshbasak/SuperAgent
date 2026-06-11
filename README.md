@@ -172,12 +172,12 @@ memory_recall("how do we round billing amounts?")
 
 - **Namespaced per git-root** — projects never leak into each other; a `__global__` namespace holds cross-project facts.
 - **Sanitized on write** — prompt-injection and PII patterns are stripped before anything is persisted.
-- **Decay + consolidation** — `superagent-memory decay` archives entries older than 90 days *and* idle 30+ days; `superagent-memory cron install` schedules it weekly. Memory stays small and true.
+- **Decay + consolidation** — `superagent-memory decay` archives entries older than 90 days *and* idle 30+ days; `superagent-memory dedup` merges near-duplicates (cosine ≥0.92, opt-in with vectors); `superagent-memory cron install` schedules decay weekly. Memory stays small and true.
 - **Ground Truth Hierarchy** — recalled memory is injected *above* training data, so the model trusts "what we decided" over "what's generally true."
 - **Hybrid vector recall** — opt-in semantic search via `SUPERAGENT_MEMORY_VECTOR=on` blends FTS keyword ranking with embedding cosine via reciprocal rank fusion, so synonym queries (`login fix` → a stored `auth bug`) surface hits pure keyword search misses. Local-first embeddings (Ollama → OpenRouter), with an in-memory fallback when no Qdrant sidecar is running.
 - **One memory, every tool** — registers into Claude Code, Cursor, and Gemini CLI today; Copilot + Antigravity experimental. [Track the rollout →](docs/plans/2026-06-03-memory-os-integration.md)
 
-Storage lives at `~/.superagent/memory-os/memory.db` (SQLite + FTS5), overridable via `SUPERAGENT_MEMORY_HOME`. 89 pytest tests cover the schema, decay, migration, and hybrid vector recall.
+Storage lives at `~/.superagent/memory-os/memory.db` (SQLite + FTS5), overridable via `SUPERAGENT_MEMORY_HOME`. 100 pytest tests cover the schema, decay, semantic dedup, migration, and hybrid vector recall.
 
 ---
 

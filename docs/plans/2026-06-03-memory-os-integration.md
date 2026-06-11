@@ -190,13 +190,13 @@ L1, L2, L4 already work. Plan focuses on **adding L3, L5, L6, L7** without break
   - **Files:** `bin/superagent-memory-mcp/src/jobs/decay.ts` + test
   - **Size:** S
 
-- [ ] **Task 4.2: Semantic dedup (port `scripts/semantic_dedup.py`)**
-  - **Depends on Phase 5** (vector embeddings). Defer if vectors not yet wired.
-  - Merge entries with cosine similarity ≥0.92
-  - **Acceptance:** Dedup pass on fixture reduces near-duplicate count
-  - **Verification:** Unit test
-  - **Files:** `bin/superagent-memory-mcp/src/jobs/dedup.ts`
-  - **Size:** M
+- [x] **Task 4.2: Semantic dedup** ✅ (unblocked once Phase 5 vectors landed)
+  - Merge entries with cosine similarity ≥0.92, namespace-scoped (no cross-project merge)
+  - Greedy single-pass clustering; canonical = most-accessed/oldest, duplicates' access folded in, soft-deleted + audited (`dedup`) + dropped from the vector index
+  - **Acceptance:** Dedup pass on fixture reduces near-duplicate count ✅ (`test_three_way_cluster_merges_two`)
+  - **Verification:** `test_dedup.py` (11 tests — exact/near dup, dry-run, pinned-skip, namespace isolation, access folding, unembeddable skip)
+  - **CLI:** `superagent-memory dedup [--dry-run] [--threshold T] [--namespace NS]` (gated on `SUPERAGENT_MEMORY_VECTOR=on`)
+  - **Files:** `memory_os/jobs/dedup.py`, wired into `memory_os/cli.py`
 
 - [x] **Task 4.3: Cron installer for non-hook platforms**
   - `superagent-memory cron install` adds weekly decay + monthly dedup to user's crontab (or launchd on macOS)
