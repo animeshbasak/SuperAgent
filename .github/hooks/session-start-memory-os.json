@@ -1,0 +1,7 @@
+{
+  "event": "sessionStart",
+  "type": "command",
+  "command": "/Users/animeshbasak/Desktop/ai-lab/projects/superagent/bin/superagent-memory-mcp/.venv/bin/superagent-memory-mcp",
+  "args": ["--probe"],
+  "description": "SuperAgent memory-os health check on session start (experimental)."
+}

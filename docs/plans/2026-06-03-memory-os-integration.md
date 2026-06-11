@@ -247,7 +247,7 @@ L1, L2, L4 already work. Plan focuses on **adding L3, L5, L6, L7** without break
 - [x] **Task 6.1: Telemetry** ✅ — local-only counters (recall/write/dedup_merge/decay_archive) in a `counters` table; `superagent-memory stats` reports them + store aggregates. `SUPERAGENT_MEMORY_TELEMETRY=off` to disable. Nothing ever leaves the SQLite file. (`test_stats.py`, 6 tests)
 - [x] **Task 6.2: Bench harness** ✅ — `superagent-memory bench [--k N] [--real]`: 12-fact fixture corpus, keyword + paraphrase probes, FTS-only vs hybrid. **Measured: semantic rediscovery 0% → 100% (+100 pts, gate was ≥30), keyword split unregressed.** (`memory_os/bench.py`, `test_bench.py`, 5 tests)
 - [x] **Task 6.3: Docs** ✅ — `docs/agent-memory.md` Memory-OS section (3-tier model + bench win), `docs/memory-os-quickstart.md` per-platform quickstarts + env reference.
-- [ ] **Task 6.4: Version bump + release** — semver bump, CHANGELOG entry, GitHub release.
+- [x] **Task 6.4: Version bump + release** ✅ — v3.1.0 / MCP 0.2.0, CHANGELOG entry, [GitHub release](https://github.com/animeshbasak/SuperAgent/releases/tag/v3.1.0).
 
 **Security review (2026-06-11, unplanned addition):** pin path traversal via
 unvalidated namespace (fixed: `[A-Za-z0-9_.-]{1,64}` lockdown + pin-path
