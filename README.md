@@ -39,7 +39,7 @@ SuperAgent removes all four. One config. One safety gate. One cost tracker. One 
 
 | Layer | Count | What it is |
 |---|---|---|
-| **CLI tools** (`bin/`) | 23 | Every capability is a standalone command you can run by hand. |
+| **CLI tools** (`bin/`) | 24 | Every capability is a standalone command you can run by hand. |
 | **Skills** (`skills/`) | 32 | The source-of-truth instruction set, routed automatically by the classifier. |
 | **Specialist agents** (`agents/`) | 6 | Named personas (architect, coder, reviewer, security, tester, brain). |
 | **Lifecycle hooks** (`hooks/`) | 9 | Real Claude Code hooks across the full session lifecycle. |
@@ -66,13 +66,14 @@ $ superagent-classify "scrape this Cloudflare-protected page"
 → scraping   (Scrapling under the hood)
 ```
 
+- **Prompts get optimized first.** Before anything is classified, `bin/superagent-optimize` (brain step 0) rewrites the raw prompt into a tight directive — politeness and filler stripped, polite questions turned imperative, rambling multi-ask prompts split into numbered steps. Deterministic, no API call, runs inside the `UserPromptSubmit` hook so *every* prompt reaches Claude optimized. Kill switch: `SUPERAGENT_OPTIMIZE=0`.
 - **48 routing rules** map task signals to chains. `mempalace-wake` always runs first; `verification-before-completion` always runs last on build tasks.
 - **It learns.** Every successful chain logs to `~/.superagent/brain/routes.jsonl`. When the same chain succeeds repeatedly for similar tasks, `superagent-patterns promote` lifts it into `patterns.jsonl`, and the classifier reads patterns *before* static rules — short-circuiting future runs.
 - **45 routing tests, all green.** The bench (`bench/run.sh`) is a hard gate: ships only at ≥ 90% with ≤ 2 fails.
 
 ---
 
-## 2. The 23 command-line tools
+## 2. The 24 command-line tools
 
 Every capability is a real executable installed to `~/.local/bin/`. Run any of them by hand.
 
@@ -80,6 +81,7 @@ Every capability is a real executable installed to `~/.local/bin/`. Run any of t
 | Tool | What it does |
 |---|---|
 | `superagent-classify` | Routes a task string → JSON skill chain + complexity + hint. The brain. |
+| `superagent-optimize` | Brain step 0 — rewrites a raw prompt into a tight directive (filler stripped, multi-asks numbered) before classify/dispatch. |
 | `superagent-chain <name>` | Prints the ordered steps of a named YAML chain (e.g. `ship-v2`). |
 | `superagent-compile` | Rewrites `skills/` into every platform's native instruction format. |
 | `superagent-patterns` | Learning-loop store: `list` · `promote` · `decay` · `protect` · `prune`. |

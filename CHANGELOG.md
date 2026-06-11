@@ -4,6 +4,18 @@ All notable changes to SuperAgent are documented here.
 
 ---
 
+## Unreleased
+
+### Added
+
+- **`superagent-optimize` — brain step 0 prompt optimization.** Every prompt is rewritten into a tight directive before Claude acts on it: politeness/filler stripped, polite questions converted to imperatives, rambling multi-ask prompts split into numbered steps. Deterministic and rule-based (no API call), so it runs inside the `UserPromptSubmit` hook (<2s) and injects an "Optimized prompt" block as the operative task. Wired into the `/superagent` router (new step 3) and the `superagent-brain` agent (Step 0). Slash commands, markup/XML payloads, and very short prompts pass through untouched. Kill switch: `SUPERAGENT_OPTIMIZE=0`. Runs logged to `~/.superagent/brain/optimizations.jsonl`. 14 smoke tests (`test/test-optimize.sh`) + 3 new hook assertions.
+
+### Fixed
+
+- **`install.sh` now re-syncs `superagent-brain.md` on every run** — the Step 5 agent copy was gated behind only-if-missing, so dev reinstalls never picked up brain changes. Reinstall (`bash install.sh`) now autowires everything: bins, hooks, agents, skills.
+
+---
+
 ## v3.1.0 — 2026-06-11 (Memory-OS — one memory, every tool)
 
 Cross-platform persistent memory served over MCP. What you teach Claude Code on Monday, Cursor knows on Tuesday. Phases 0–6 of the [Memory-OS plan](docs/plans/2026-06-03-memory-os-integration.md), complete.

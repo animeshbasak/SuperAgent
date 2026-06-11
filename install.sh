@@ -157,7 +157,7 @@ info "Linking agent files..."
 
 AGENTS_DIR="$CLAUDE_DIR/agents"
 mkdir -p "$AGENTS_DIR"
-if [[ -f "$SCRIPT_DIR/agents/superagent-brain.md" && ! -f "$AGENTS_DIR/superagent-brain.md" ]]; then
+if [[ -f "$SCRIPT_DIR/agents/superagent-brain.md" ]]; then
   cp "$SCRIPT_DIR/agents/superagent-brain.md" "$AGENTS_DIR/superagent-brain.md"
   ok "superagent-brain agent installed at ~/.claude/agents/"
 fi

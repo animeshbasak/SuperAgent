@@ -27,19 +27,28 @@ If `backend=local`, run in **lite mode**: skip step 2 context load, cap chain at
 command -v mempalace >/dev/null 2>&1 && mempalace wake-up 2>/dev/null | head -60 || true
 ```
 
-**3. Classify.** Run the classifier on `$ARGUMENTS`:
+**3. Optimize (brain step 0).** Rewrite the raw task into a tight directive before classifying. Strip the `? ` confirm prefix first if present (see step 6), then:
+```bash
+if command -v superagent-optimize >/dev/null 2>&1; then
+  superagent-optimize "$TASK"
+fi
+```
+Output is JSON `{original, optimized, notes, changed}`. If `changed` is true, use `optimized` as the working task for every later step — classify, announce, execute — and show it in the announce block. If the optimizer is missing, errors, or returns `changed: false`, continue with the raw task. Kill switch: `SUPERAGENT_OPTIMIZE=0`. Never silently swap intent — the optimizer only strips filler and restructures; if its output looks semantically different from what the user asked, fall back to the raw task and say so.
+
+**4. Classify.** Run the classifier on the (optimized) task:
 ```bash
 if command -v superagent-classify >/dev/null 2>&1; then
-  superagent-classify "$ARGUMENTS"
+  superagent-classify "$TASK"
 else
   echo '{"chain":[],"hint":null}'
 fi
 ```
 Output is JSON `{chain: [...], hint: [...|null]}`. **If classifier missing or chain empty:** fall back to keyword matching against the available skills list shown in your system reminders — including the `agent-skills:*` namespace (16 skills imported from agent-skills covering define → plan → build → verify → ship). Pick top-3 by description overlap and ask user.
 
-**4. Announce.** Print to the user:
+**5. Announce.** Print to the user:
 ```
 SuperAgent routing plan for: "<task>"
+Optimized: <optimized task — only when the optimizer changed it>
 Backend: <anthropic|local:model-name>
 Chain: skill1 → skill2 → skill3
 Rationale: <one line why each skill was selected>
@@ -48,7 +57,7 @@ Proceed? (yes / edit / skip N / run-only N)
 ```
 On local backend, omit Rationale and Estimated effort lines — keep announce ≤4 lines total.
 
-**5. Auto-execute (default).** Do NOT ask "Proceed?". The user opted in by invoking SuperAgent. Skip the confirmation gate and start running the chain immediately.
+**6. Auto-execute (default).** Do NOT ask "Proceed?". The user opted in by invoking SuperAgent. Skip the confirmation gate and start running the chain immediately.
 
 **Opt-in confirm prefix.** If `$ARGUMENTS` starts with `? ` (literal question mark + space), strip the prefix before classifying and run in **confirm mode** for this call only — show the chain and wait for `yes/edit/skip N/run-only N`. Pre-process (works in bash and zsh):
 ```bash
@@ -66,15 +75,15 @@ fi
 - Local backend AND chain length > 3 (offer to trim or confirm full plan).
 - Classifier returned empty/`mempalace-wake` only AND keyword-match has no high-confidence single skill.
 
-**6. Execute.** For each skill in the chain, invoke via the Skill tool in order. Between skills, summarize the artifact produced in one sentence. If a skill fails or user says "stop", halt and report.
+**7. Execute.** For each skill in the chain, invoke via the Skill tool in order, working from the optimized task. Between skills, summarize the artifact produced in one sentence. If a skill fails or user says "stop", halt and report.
 
-**7. Log.** After completion (or halt), append to `~/.superagent/brain/routes.jsonl` (auto-create if missing):
+**8. Log.** After completion (or halt), append to `~/.superagent/brain/routes.jsonl` (auto-create if missing):
 ```bash
 mkdir -p ~/.superagent/brain
 # then append the route record
 ```
 ```json
-{"ts": "<iso>", "task_hash": "<sha256-12>", "task": "<first 120 chars>", "chain": [...], "outcome": "done|halt|fail", "user_override": "yes|no", "backend": "<anthropic|local>"}
+{"ts": "<iso>", "task_hash": "<sha256-12>", "task": "<first 120 chars>", "chain": [...], "outcome": "done|halt|fail", "user_override": "yes|no", "backend": "<anthropic|local>", "optimized": true|false}
 ```
 
 ## Skill namespaces

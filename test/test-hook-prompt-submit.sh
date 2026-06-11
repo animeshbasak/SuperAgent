@@ -22,4 +22,21 @@ echo "$OUT" | jq -e '.hookSpecificOutput.additionalContext | type == "string"' >
 
 echo '{"session_id":"s","prompt":""}' | HOME="$TMPHOME" python3 "$HOOK" >/dev/null
 
+# filler-heavy prompt → hook injects an optimized-prompt block
+PAYLOAD='{"session_id":"s-2","hook_event_name":"UserPromptSubmit","prompt":"could you please fix the dark mode toggle bug?"}'
+OUT=$(HOME="$TMPHOME" PATH="$SCRIPT_DIR/../bin:$PATH" python3 "$HOOK" <<<"$PAYLOAD")
+
+echo "$OUT" | jq -e '.hookSpecificOutput.additionalContext | contains("## Optimized prompt")' >/dev/null \
+  || { echo "FAIL: optimized prompt block missing: $OUT"; exit 1; }
+
+echo "$OUT" | jq -e '.hookSpecificOutput.additionalContext | contains("Fix the dark mode toggle bug.")' >/dev/null \
+  || { echo "FAIL: optimized text missing: $OUT"; exit 1; }
+
+# already-clean prompt → no optimization block
+PAYLOAD='{"session_id":"s-3","hook_event_name":"UserPromptSubmit","prompt":"Fix the dark mode toggle bug."}'
+OUT=$(HOME="$TMPHOME" PATH="$SCRIPT_DIR/../bin:$PATH" python3 "$HOOK" <<<"$PAYLOAD")
+
+echo "$OUT" | jq -e '.hookSpecificOutput.additionalContext | contains("## Optimized prompt") | not' >/dev/null \
+  || { echo "FAIL: unexpected optimization block on clean prompt: $OUT"; exit 1; }
+
 echo "test-hook-prompt-submit: PASS"

@@ -59,6 +59,30 @@ def main():
         except Exception:
             pass
 
+    # ── Prompt optimization (brain step 0) ──────────────────────────────────────
+    # Rewrite the raw prompt into a tighter directive and hand the optimized
+    # version to Claude as the operative task. Best-effort: any failure means
+    # no optimization block, never a blocked prompt.
+    optimized = None
+    optimizer = shutil.which("superagent-optimize") or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "bin", "superagent-optimize"
+    )
+    optimizer = os.path.abspath(optimizer)
+    if os.path.exists(optimizer):
+        try:
+            r = subprocess.run(
+                [optimizer, prompt],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                data = json.loads(r.stdout)
+                if data.get("changed") and data.get("optimized"):
+                    optimized = data["optimized"]
+        except Exception:
+            pass
+
     # ── AIDefence (Wave 2) ──────────────────────────────────────────────────────
     aidefence_enabled = os.path.exists(
         os.path.expanduser("~/.superagent/aidefence/enabled")
@@ -104,6 +128,13 @@ def main():
         f"Complexity: {complexity}" + (f"  Categories: {', '.join(categories)}" if categories else ""),
         "Chain: " + (" → ".join(chain) if chain else "(no chain — using default)"),
     ]
+    if optimized:
+        lines += [
+            "",
+            "## Optimized prompt (SuperAgent brain)",
+            optimized,
+            "Treat the optimized prompt above as the operative task; the raw prompt is kept for reference.",
+        ]
     additional_context = "\n".join(lines)
 
     _emit({

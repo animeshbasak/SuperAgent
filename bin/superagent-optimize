@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""superagent-optimize — deterministic prompt optimizer (SuperAgent brain step 0).
+
+Takes a raw user prompt and rewrites it into a tighter, imperative task
+statement before it reaches Claude: strips politeness/filler, converts polite
+questions to directives, splits rambling multi-clause asks into numbered
+steps. Purely rule-based — no API calls — so it is safe to run inside the
+UserPromptSubmit hook (<2s budget).
+
+Usage: superagent-optimize "raw prompt"
+Output: JSON {"original", "optimized", "notes", "changed"}
+
+Env:
+  SUPERAGENT_OPTIMIZE=0|false|off  — kill switch, passthrough unchanged.
+
+Every run appends one line to ~/.superagent/brain/optimizations.jsonl
+(best-effort; logging failures never block output).
+"""
+import hashlib
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+
+# Minimum prompt length worth rewriting — anything shorter is already terse.
+MIN_LEN = 12
+
+# Leading filler/politeness, stripped repeatedly from the front.
+LEADING_FILLER = [
+    r"hey[,!\s]+",
+    r"hi[,!\s]+",
+    r"hello[,!\s]+",
+    r"please[,\s]+",
+    r"kindly[,\s]+",
+    r"maybe[,\s]+",
+    r"could you(?: please)?(?: also)?[,\s]+",
+    r"can you(?: please)?(?: also)?[,\s]+",
+    r"would you(?: mind)?(?: please)?[,\s]+",
+    r"will you(?: please)?[,\s]+",
+    r"i(?:'d| would) like you to[,\s]+",
+    r"i (?:want|need) you to[,\s]+",
+    r"i was wondering if you could[,\s]+",
+    r"also[,\s]+",
+    r"just[,\s]+",
+]
+
+# Trailing pleasantries, stripped from the end.
+TRAILING_FILLER = r"[,\s]*(?:thanks(?: a lot| so much)?|thank you|please)[.!\s]*$"
+
+# Connectors that mark separate work items in one rambling sentence.
+CLAUSE_SPLIT = r"\s*(?:,\s*)?\b(?:and then|after that|and also)\s+"
+
+# A polite request opener means a trailing "?" is decoration, not a question.
+POLITE_OPENER = r"^\s*(?:please\s+)?(?:could|can|would|will)\s+you\b"
+
+
+def _sentence(s: str) -> str:
+    s = s.strip().rstrip(".")
+    if not s:
+        return s
+    return s[0].upper() + s[1:] + "."
+
+
+def optimize(prompt: str):
+    notes = []
+    text = re.sub(r"\s+", " ", prompt).strip()
+
+    polite = bool(re.match(POLITE_OPENER, text, re.IGNORECASE))
+
+    # strip leading filler repeatedly until stable
+    while True:
+        for pat in LEADING_FILLER:
+            new = re.sub(r"^\s*" + pat, "", text, count=1, flags=re.IGNORECASE)
+            if new != text:
+                text = new
+                if "stripped leading filler" not in notes:
+                    notes.append("stripped leading filler")
+                break
+        else:
+            break
+
+    stripped = re.sub(TRAILING_FILLER, "", text, flags=re.IGNORECASE)
+    if stripped != text:
+        text = stripped
+        notes.append("stripped trailing pleasantry")
+
+    if polite and text.endswith("?"):
+        text = text.rstrip("? ").strip()
+        notes.append("converted polite question to directive")
+
+    # split rambling multi-clause asks into numbered steps
+    clauses = [c.strip() for c in re.split(CLAUSE_SPLIT, text, flags=re.IGNORECASE) if c.strip()]
+    if len(clauses) >= 2 and all(len(c.split()) >= 3 for c in clauses):
+        text = "\n".join(f"{i}. {_sentence(c)}" for i, c in enumerate(clauses, 1))
+        notes.append(f"split into {len(clauses)} numbered steps")
+    else:
+        if text and not text.endswith((".", "!", "?")):
+            text = _sentence(text)
+        elif text:
+            text = text[0].upper() + text[1:]
+
+    return text, notes
+
+
+def _log(home_log: str, record: dict):
+    try:
+        os.makedirs(os.path.dirname(home_log), exist_ok=True)
+        with open(home_log, "a") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
+
+
+def main() -> int:
+    if len(sys.argv) < 2 or not sys.argv[1].strip():
+        sys.stderr.write("Usage: superagent-optimize <prompt>\n")
+        return 1
+
+    original = sys.argv[1]
+    disabled = os.environ.get("SUPERAGENT_OPTIMIZE", "1").lower() in ("0", "false", "off")
+
+    if disabled:
+        optimized, notes = original, ["optimization disabled (SUPERAGENT_OPTIMIZE)"]
+    elif original.strip().startswith(("/", "<")) or len(original.strip()) < MIN_LEN:
+        optimized, notes = original, ["passthrough (slash command, markup, or too short)"]
+    else:
+        optimized, notes = optimize(original)
+
+    changed = optimized.strip() != original.strip()
+
+    _log(
+        os.path.expanduser("~/.superagent/brain/optimizations.jsonl"),
+        {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "prompt_hash": hashlib.sha256(original.encode()).hexdigest()[:12],
+            "changed": changed,
+            "notes": notes,
+        },
+    )
+
+    print(json.dumps({
+        "original": original,
+        "optimized": optimized,
+        "notes": notes,
+        "changed": changed,
+    }))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
