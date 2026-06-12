@@ -8,6 +8,8 @@ All notable changes to SuperAgent are documented here.
 
 ### Added
 
+- **`superagent-report` — org-pilot before/after report.** Aggregates the telemetry SuperAgent already writes locally (cost ledger, route outcomes, prompt-optimization log, memory savings) into a one-page markdown report (or `--json`) for budget owners: spend by model tier with an Opus-rate ceiling comparison, measured savings, routing reliability with verification-gate counts. Only measured numbers — empty sources render "no data", never an extrapolated figure. `--days N`, `--project PATH`, `--out FILE`. 16 smoke tests (`test/test-report.sh`). Plan: `docs/plans/2026-06-12-superagent-report.md`.
+
 - **`superagent-optimize` — brain step 0 prompt optimization.** Every prompt is rewritten into a tight directive before Claude acts on it: politeness/filler stripped, polite questions converted to imperatives, rambling multi-ask prompts split into numbered steps. Deterministic and rule-based (no API call), so it runs inside the `UserPromptSubmit` hook (<2s) and injects an "Optimized prompt" block as the operative task. Wired into the `/superagent` router (new step 3) and the `superagent-brain` agent (Step 0). Slash commands, markup/XML payloads, and very short prompts pass through untouched. Kill switch: `SUPERAGENT_OPTIMIZE=0`. Runs logged to `~/.superagent/brain/optimizations.jsonl`. 14 smoke tests (`test/test-optimize.sh`) + 3 new hook assertions.
 
 ### Fixed

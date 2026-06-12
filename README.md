@@ -39,7 +39,7 @@ SuperAgent removes all four. One config. One safety gate. One cost tracker. One 
 
 | Layer | Count | What it is |
 |---|---|---|
-| **CLI tools** (`bin/`) | 24 | Every capability is a standalone command you can run by hand. |
+| **CLI tools** (`bin/`) | 25 | Every capability is a standalone command you can run by hand. |
 | **Skills** (`skills/`) | 32 | The source-of-truth instruction set, routed automatically by the classifier. |
 | **Specialist agents** (`agents/`) | 6 | Named personas (architect, coder, reviewer, security, tester, brain). |
 | **Lifecycle hooks** (`hooks/`) | 9 | Real Claude Code hooks across the full session lifecycle. |
@@ -73,7 +73,7 @@ $ superagent-classify "scrape this Cloudflare-protected page"
 
 ---
 
-## 2. The 24 command-line tools
+## 2. The 25 command-line tools
 
 Every capability is a real executable installed to `~/.local/bin/`. Run any of them by hand.
 
@@ -120,6 +120,7 @@ Every capability is a real executable installed to `~/.local/bin/`. Run any of t
 | `superagent-metrics [today\|week\|all]` | Aggregates counter/gauge/histogram metrics with p50/p95/p99 + 2σ anomaly flags. |
 | `superagent-obs` | Low-level emitter for spans + metrics (used by the hooks). |
 | `superagent-obs-rotate` | Daily-rotates `spans.jsonl` / `metrics.jsonl`, prunes anything older than 30 days. |
+| `superagent-report` | One-page pilot report from local telemetry — spend by model, measured savings, routing reliability. Markdown or `--json`. |
 
 ---
 
