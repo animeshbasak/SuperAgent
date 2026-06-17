@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""superagent-verbosity — output-token verbosity shaper for SuperAgent.
+
+Reads routing telemetry to recommend a verbosity level (0–5) and emit
+a terseness instruction string suitable for prepending to a system prompt.
+
+Subcommands:
+  recommend [--routes PATH]   Compute verbosity level from routes.jsonl.
+  note [--level N]            Print the terseness instruction for a given level.
+  stats [--routes PATH]       Print a JSON summary of routing signals.
+
+Scoring signals (deterministic, no randomness):
+  halt_rate   Fraction of records with outcome "halt" or "fail".
+              More user interrupts → user prefers terser output → lower level.
+  volume      Number of records in the log.
+              Sparse history (< 5 records) → neutral level 3 (not enough signal).
+
+Scoring function:
+  base = 3  (neutral)
+  If volume >= 5:
+    base = round(5 * (1 - halt_rate))   maps [0.0, 1.0] halt_rate → [5, 0]
+  level = clamp(base, 0, 5)
+"""
+import argparse
+import json
+import os
+import pathlib
+import sys
+
+DEFAULT_ROUTES = os.path.join(os.path.expanduser("~"), ".superagent", "brain", "routes.jsonl")
+
+# Terseness instructions indexed by level (0 = maximally terse, 5 = no constraint).
+NOTES = {
+    0: "Be maximally terse: answer in fragments, no preamble, no restating context.",
+    1: "Be very terse: omit preamble, avoid restating context, keep responses compact.",
+    2: "Be terse: skip preamble, use concise sentences, no unnecessary elaboration.",
+    3: "Be concise: prefer shorter responses but complete thoughts where useful.",
+    4: "Use normal verbosity: be thorough but avoid unnecessary padding.",
+    5: "",
+}
+
+SPARSE_THRESHOLD = 5  # fewer records than this → not enough signal, use level 3
+
+
+def iter_jsonl(path):
+    """Yield parsed records from a .jsonl file, skipping blank and corrupt lines."""
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except Exception:
+                    # corrupt JSON line — skip, never crash
+                    continue
+    except OSError:
+        return
+
+
+def compute_signals(routes_path):
+    """Return (volume, halt_rate) from the routes log at routes_path."""
+    total = 0
+    halted = 0
+    for rec in iter_jsonl(routes_path):
+        total += 1
+        outcome = rec.get("outcome", "")
+        if outcome in ("halt", "fail"):
+            halted += 1
+    halt_rate = halted / total if total > 0 else 0.0
+    return total, halt_rate
+
+
+def score(volume, halt_rate):
+    """Deterministic scoring function: returns int level 0–5.
+
+    With sparse history (volume < SPARSE_THRESHOLD) default to neutral 3.
+    Otherwise: level = round(5 * (1 - halt_rate)), clamped to [0, 5].
+    High halt_rate → low level (terse). Zero halts → level 5 (verbose).
+    """
+    if volume < SPARSE_THRESHOLD:
+        return 3
+    raw = 5.0 * (1.0 - halt_rate)
+    return max(0, min(5, round(raw)))
+
+
+def rationale(volume, halt_rate, level):
+    if volume < SPARSE_THRESHOLD:
+        return f"Sparse history ({volume} records < {SPARSE_THRESHOLD}); defaulting to neutral level 3."
+    return (
+        f"halt_rate={halt_rate:.2f} over {volume} records → "
+        f"level={level} (higher halts → terser output)."
+    )
+
+
+def cmd_recommend(args):
+    routes_path = args.routes or DEFAULT_ROUTES
+    volume, halt_rate = compute_signals(routes_path)
+    level = score(volume, halt_rate)
+    print(json.dumps({
+        "level": level,
+        "signals": {
+            "volume": volume,
+            "halt_rate": round(halt_rate, 4),
+        },
+        "rationale": rationale(volume, halt_rate, level),
+    }, indent=2))
+
+
+def cmd_note(args):
+    if args.level is not None:
+        level = args.level
+    else:
+        routes_path = getattr(args, "routes", None) or DEFAULT_ROUTES
+        volume, halt_rate = compute_signals(routes_path)
+        level = score(volume, halt_rate)
+    level = max(0, min(5, level))
+    print(NOTES[level])
+
+
+def cmd_stats(args):
+    routes_path = args.routes or DEFAULT_ROUTES
+    volume, halt_rate = compute_signals(routes_path)
+    level = score(volume, halt_rate)
+    print(json.dumps({
+        "total_records": volume,
+        "halt_rate": round(halt_rate, 4),
+        "recommended_level": level,
+    }, indent=2))
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="superagent-verbosity",
+        description="Output-token verbosity shaper: recommend a terseness level from routing telemetry.",
+    )
+    sub = parser.add_subparsers(dest="subcommand")
+
+    p_rec = sub.add_parser("recommend", help="Recommend a verbosity level 0–5 from routes.jsonl.")
+    p_rec.add_argument("--routes", metavar="PATH", help="Path to routes.jsonl (default: ~/.superagent/brain/routes.jsonl).")
+
+    p_note = sub.add_parser("note", help="Print the terseness instruction string for a level.")
+    p_note.add_argument("--level", type=int, metavar="N", help="Verbosity level 0–5 (if omitted, computed from routes).")
+    p_note.add_argument("--routes", metavar="PATH", help="Path to routes.jsonl used when --level is omitted.")
+
+    p_stats = sub.add_parser("stats", help="Print JSON summary: total records, halt_rate, recommended level.")
+    p_stats.add_argument("--routes", metavar="PATH", help="Path to routes.jsonl (default: ~/.superagent/brain/routes.jsonl).")
+
+    return parser
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.subcommand is None:
+        parser.print_help()
+        sys.exit(2)
+
+    if args.subcommand == "recommend":
+        cmd_recommend(args)
+    elif args.subcommand == "note":
+        cmd_note(args)
+    elif args.subcommand == "stats":
+        cmd_stats(args)
+    else:
+        parser.print_help()
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()
