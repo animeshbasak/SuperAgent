@@ -4,10 +4,10 @@
 
 # One AI config. Every coding tool you use.
 
-**Write your AI instructions once. SuperAgent compiles them to Cursor, Codex, Copilot, Continue.dev, Windsurf, Aider, Gemini, and Claude Code in their native formats. Then it routes every task to the right skill, watches the shell for scary commands, tracks your spend, and falls back to a free local model when you hit the rate limit. And with Memory-OS, every one of those tools shares a single persistent memory — what you teach Claude Code on Monday, Cursor knows on Tuesday.**
+**Write your AI instructions once. SuperAgent compiles them to Cursor, Codex, Copilot, Continue.dev, Windsurf, Aider, Gemini, and Claude Code in their native formats. Then it routes every task to the right skill, watches the shell for scary commands, tracks your spend, and falls back to a free local model when you hit the rate limit. And with Memory-OS, every one of those tools shares a single persistent memory — what you teach Claude Code on Monday, Cursor knows on Tuesday. v3.2 goes further: it compresses what your AI reads and writes (reversibly), and turns your codebase into a knowledge graph that survives across sessions.**
 
 [![Stars](https://img.shields.io/github/stars/animeshbasak/SuperAgent?style=social)](https://github.com/animeshbasak/SuperAgent)
-[![Version](https://img.shields.io/badge/v3.1.0-shipped-blueviolet)](https://github.com/animeshbasak/SuperAgent/releases/tag/v3.1.0)
+[![Version](https://img.shields.io/badge/v3.2.0-shipped-blueviolet)](https://github.com/animeshbasak/SuperAgent/releases/tag/v3.2.0)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-196%20green-brightgreen)](#receipts)
 [![Bench](https://img.shields.io/badge/routing-45%2F45-brightgreen)](#receipts)
@@ -46,8 +46,31 @@ SuperAgent removes all four. One config. One safety gate. One cost tracker. One 
 | **Routing rules** (`brain/rules.yaml`) | 48 | Regex signals → skill chains, plus a learning loop on top. |
 | **Platform adapters** (`adapters/`) | 9 + shared | Native rule output for every major AI coding tool. |
 | **Slash commands** (`commands/`) | 9 | `/superagent`, `/sparc`, `/testgen`, `/diff-risk`, … |
-| **Memory tools** (MCP) | 5 | Cross-session, cross-tool persistent memory (FTS5 + optional vector). |
+| **Memory + graph tools** (MCP) | 9 | Cross-session memory (FTS5 + optional vector) **+ persistent knowledge graph** (entities/relations) **+ reversible compression** retrieval. |
+| **Context efficiency** | 3 | Cuts tokens *in* (SmartCrusher + CCR) and *out* (verbosity shaper) — same answers, fewer tokens. |
 | **Routing bench** (`bench/`) | 45 | Accuracy harness, hard gate ≥ 90%. Currently 45/45. |
+
+---
+
+## Why SuperAgent, not just your AI tool
+
+**SuperAgent is not another AI coding tool — it's the layer that makes the one you already use better.** It doesn't replace Claude Code, Cursor, or Copilot; it sits underneath all of them, compiles one config into each, and adds the things none of them ship: a safety gate on the shell, a cost tracker with a free local fallback, one memory shared across every tool, reversible context compression, and a persistent knowledge graph. It also folds in what you'd otherwise wire up from three separate point tools (a compressor, a memory service, a router) — natively, locally, as files you own.
+
+| Capability | Your AI tool alone *(Claude Code / Cursor / Copilot)* | aider | Headroom *(compression)* | Memory MCPs *(Mem0, etc.)* | **SuperAgent** |
+|---|:---:|:---:|:---:|:---:|:---:|
+| One config → compiled to **every** tool natively | ✗ (per-tool files) | ✗ | ✗ | ✗ | ✅ |
+| Plain-English task → auto skill chain | partial | ✗ | ✗ | ✗ | ✅ 48 rules + learning loop |
+| Reversibility safety gate (`rm -rf`, `push --force`, `DROP`, `.env`) | ✗ | ✗ | ✗ | ✗ | ✅ harness hook |
+| Cost tracking + **free local-model fallback** at the limit | ✗ | ✗ | ✗ | ✗ | ✅ |
+| Persistent memory **shared across all your tools** | ✗ (per-tool) | ✗ | partial | ✅ (single tool) | ✅ |
+| Semantic / paraphrase recall | ✗ | ✗ | ✗ | ✅ | ✅ hybrid RRF |
+| Reversible context compression (tokens *in*) | ✗ | ✗ | ✅ best-in-class | ✗ | ✅ CCR + SmartCrusher |
+| Output-token reduction (tokens *out*) | ✗ | ✗ | ✅ | ✗ | ✅ verbosity shaper |
+| Persistent **knowledge graph** (entities + relations) | ✗ | ✗ | ✗ | ✗ | ✅ |
+| 100% local · no cloud · no telemetry | varies | ✅ | ✅ (local mode) | varies | ✅ |
+| Every capability is an **inspectable file you own** | ✗ | partial | ✗ | ✗ | ✅ `bin/` `skills/` `hooks/` |
+
+**The honest version.** Headroom compresses harder (a Rust core + a trained ML model) if compression is *all* you want; a dedicated memory SaaS may scale further for a large team; your AI tool's editor UX is its own thing and SuperAgent doesn't touch it. SuperAgent's bet is **integration + ownership**: routing, safety, cost, memory, compression, and a knowledge graph as one local, inspectable, no-phone-home layer that works the same across every tool on your machine — not five services to wire together and trust. Nothing here is a black box; every feature is a file under `bin/`, `skills/`, or `hooks/` you can read, edit, or delete.
 
 ---
 
@@ -73,7 +96,7 @@ $ superagent-classify "scrape this Cloudflare-protected page"
 
 ---
 
-## 2. The 27 command-line tools
+## 2. The 26 command-line tools
 
 Every capability is a real executable installed to `~/.local/bin/`. Run any of them by hand.
 
@@ -96,6 +119,7 @@ Every capability is a real executable installed to `~/.local/bin/`. Run any of t
 | `superagent-cost-alerts` | Fires tiered budget alerts; drops `auto-downgrade.flag` near the limit. |
 | `superagent-switch` | Swap the active LLM backend: `list` · `to <model>` · `back` · `canary` · `status` · `auto on\|off`. Canary-tests before flipping. |
 | `superagent-org-policy` | Organisation-wide restriction policy: `show` · `set` · `check`. One file (`~/.superagent/org-policy.json`) caps spend, limits which model tiers are allowed, and redacts project names from shared reports. `check` is the gate the safety hook and reports call. |
+| `superagent-verbosity` | Output-token shaper: `recommend` · `note` · `stats`. Reads your `routes.jsonl` behavioral signals (interrupt/halt rate) and recommends a terseness level 0–5, emitting a system-prompt note that trims what the model *writes back*. The output-side complement to input compression. |
 
 ### Quality, safety & shipping
 | Tool | What it does |
@@ -173,7 +197,7 @@ memory_recall("how do we round billing amounts?")
 # → "banker's rounding — finance signed off (decision, 6 days ago)"
 ```
 
-**5 MCP tools** — `memory_recall` (BM25/FTS search) · `memory_write` (append-only, sanitized) · `memory_list` (recent by namespace/kind) · `memory_pin` (promote to the workspace layer) · `memory_forget` (soft-delete by id or pattern).
+**9 MCP tools** — *Memory:* `memory_recall` (BM25/FTS search) · `memory_write` (append-only, sanitized) · `memory_list` (recent by namespace/kind) · `memory_pin` (promote to the workspace layer) · `memory_forget` (soft-delete by id or pattern) · `memory_retrieve` (pull back the original of any compressed/cached content — see CCR below). *Knowledge graph:* `graph_ingest` (load a graphify graph) · `graph_query` (entities + their relations, fused with text recall) · `graph_neighbors` (walk the graph).
 
 - **Namespaced per git-root** — projects never leak into each other; a `__global__` namespace holds cross-project facts.
 - **Sanitized on write** — prompt-injection and PII patterns are stripped before anything is persisted.
@@ -182,9 +206,23 @@ memory_recall("how do we round billing amounts?")
 - **Hybrid vector recall** — opt-in semantic search via `SUPERAGENT_MEMORY_VECTOR=on` blends FTS keyword ranking with embedding cosine via reciprocal rank fusion, so synonym queries (`login fix` → a stored `auth bug`) surface hits pure keyword search misses. Local-first embeddings (Ollama → OpenRouter), with an in-memory fallback when no Qdrant sidecar is running.
 - **One memory, every tool** — registers into Claude Code, Cursor, and Gemini CLI today; Copilot + Antigravity experimental. [Track the rollout →](docs/plans/2026-06-03-memory-os-integration.md)
 
-Storage lives at `~/.superagent/memory-os/memory.db` (SQLite + FTS5), overridable via `SUPERAGENT_MEMORY_HOME`. 134 pytest tests cover the schema, decay, semantic dedup, migration, hybrid vector recall, telemetry, the bench harness, and security regressions (path-traversal + mass-forget guards).
+Storage lives at `~/.superagent/memory-os/memory.db` (SQLite + FTS5), overridable via `SUPERAGENT_MEMORY_HOME`. **196 pytest tests** cover the schema, decay, semantic dedup, migration, hybrid vector recall, telemetry, the bench harness, security regressions (path-traversal + mass-forget guards), and the v3.2 additions below (CCR, SmartCrusher, knowledge graph).
 
 **Proof, not promises:** `superagent-memory bench` replays a fixture corpus with keyword and paraphrase probes. Paraphrase rediscovery: **0% FTS-only → 100% hybrid** (keyword split unregressed). `superagent-memory stats` shows your own usage — counters never leave the local SQLite file. Setup: [docs/memory-os-quickstart.md](docs/memory-os-quickstart.md).
+
+### New in v3.2 — fewer tokens in, fewer tokens out, and a graph that remembers structure
+
+Memory stops your AI re-discovering *decisions*. v3.2 adds three pieces so it also stops wasting tokens on *content* — all local-first, all reversible:
+
+- **CCR — Compress-Cache-Retrieve (reversible compression).** Bulky tool output is dropped from context but cached by content hash, leaving a tiny sentinel token (`ccr:<hash>:<count>`). If the model actually needs the dropped detail, it calls `memory_retrieve(token)` and gets the original back — optionally filtered by a query. Lossy in context, lossless on demand. TTL-bounded so the cache stays small.
+- **SmartCrusher — statistical compression of tool output.** A JSON array of 200 near-identical rows collapses to the rows that carry signal: each row is scored by field-rarity and numeric-outlier z-score, the top fraction (plus first and last) is kept, and the rest folds into one CCR sentinel — so the result is still valid JSON and still reversible. A content router classifies json/code/log/diff/text and applies the right strategy. Pure stdlib, zero deps.
+- **Persistent knowledge graph — graphify, but it remembers.** `graphify` already turns a codebase into a knowledge graph (71× token savings per query); v3.2 makes that graph *persistent* and *queryable across sessions*. `graph_ingest` parses `graphify-out/graph.json` into `entities` + `triples` tables (confidence-typed EXTRACTED/INFERRED/AMBIGUOUS, with temporal `valid_from`/`valid_to` provenance), dedupes entities with the same cosine≥0.92 logic the memory store uses, and `graph_query` returns matching entities **plus their incident relations**, RRF-blended with text recall. So "how does auth work?" returns the auth entity, the six things that call it, *and* the prior decision about it — not just a text snippet. No more re-extracting the same graph every session.
+
+```bash
+graph_ingest("graphify-out/graph.json")        # one-time, or after --update
+graph_query("auth")
+# → entity: auth.py  +  relations: [login→calls→auth, session→uses→auth, …]  +  decision: "banker's rounding signed off"
+```
 
 ---
 
@@ -294,7 +332,7 @@ PROMPTS 45   PASS 45   FAIL 0   AVG 1.000
 HARD GATE: PASS  (avg >= 0.90, fails <= 2)
 
 $ for t in test/test-*.sh; do bash "$t" >/dev/null && echo OK; done | wc -l
-62
+73
 
 $ superagent-aidefence list | wc -l
 58           # injection + PII patterns
@@ -318,6 +356,7 @@ AIDefence tested on a 100-prompt corpus: **86% of attack prompts caught, 2% fals
 | [**v2.6 Wave 3**](CHANGELOG.md#v260--2026-05-13-wave-3-methodology--quality) | SPARC 5-phase pipeline, coverage gap detection, per-diff risk scoring. |
 | [**v3.0 Capstone**](https://github.com/animeshbasak/SuperAgent/releases/tag/v3.0.0) | Three upstream projects (Scrapling / Octogent / jcode) distilled into native skills. |
 | [**v3.1 Memory-OS**](CHANGELOG.md) (Jun 2026) | One persistent memory across every coding tool. Hybrid semantic recall (paraphrase rediscovery 0%→100% on bench), decay + semantic dedup lifecycle, security-hardened MCP boundary, local-first embeddings. [Plan →](docs/plans/2026-06-03-memory-os-integration.md) |
+| [**v3.2 Context efficiency**](CHANGELOG.md) (Jun 2026) | Fewer tokens in *and* out: CCR reversible compression (`memory_retrieve`), SmartCrusher statistical tool-output compression, a persistent cross-session knowledge graph (`graph_ingest`/`graph_query`/`graph_neighbors`), and the `superagent-verbosity` output shaper. Headroom-inspired, all local-first. |
 
 ---
 
@@ -326,7 +365,7 @@ AIDefence tested on a 100-prompt corpus: **86% of attack prompts caught, 2% fals
 The honest roadmap — gaps we know about, in priority order:
 
 1. **Session auto-capture** — a Stop-hook that distills each session into memory entries automatically, so memory grows without anyone calling `memory_write`. The single highest-leverage missing piece.
-2. **CI matrix** — GitHub Actions running the 134 memory tests + 45-prompt routing bench + fresh-box adapter installs on macOS and Linux per PR. (Today the gates run locally; the receipts should be public.)
+2. **CI matrix** — GitHub Actions running the 196 memory tests + 45-prompt routing bench + fresh-box adapter installs on macOS and Linux per PR. (Today the gates run locally; the receipts should be public.)
 3. **Team memory** — an opt-in shared namespace synced through git (encrypted), so a team's decisions compound the way an individual's do.
 4. **Vector-on-by-default decision** — once `bench --real` data accumulates across machines, decide whether semantic recall ships enabled (today: opt-in, zero-dep default).
 5. **Copilot/Antigravity graduation** — both adapters are experimental pending upstream MCP support; revisit quarterly.
@@ -338,7 +377,7 @@ The honest roadmap — gaps we know about, in priority order:
 
 ```
 SuperAgent/
-├── bin/            24 command-line tools + the memory-os MCP server (installed to ~/.local/bin/)
+├── bin/            26 command-line tools + the memory-os MCP server (installed to ~/.local/bin/)
 ├── skills/         32 skills (the source of truth)
 ├── agents/         6 specialist agent personas
 ├── hooks/          9 Claude Code lifecycle hooks (+ 3 helper scripts)
