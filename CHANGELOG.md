@@ -6,6 +6,14 @@ All notable changes to SuperAgent are documented here.
 
 ## Unreleased
 
+_Nothing yet._
+
+---
+
+## v3.2.0 — 2026-06-17 (Context efficiency — fewer tokens in and out)
+
+Cut tokens in *and* out of the model, make the knowledge graph persistent, and add organisation-level governance. Memory-OS bumped to v0.3.0; 196 pytest + 73 shell tests green.
+
 ### Added
 
 - **`superagent-org-policy` — organisation-wide restriction policy.** One persistent file (`~/.superagent/org-policy.json`) encodes three restrictions an org imposes on every SuperAgent session on a machine: a spend cap (`monthly_budget_usd`), a model-usage allowlist (`allowed_model_tiers` — e.g. local/haiku only), and per-project redaction for shared reports (`redact_projects`). New CLI `bin/superagent-org-policy` with `show` / `set` / `check`; `check --model NAME` is the reusable gate (exit 3 when off-policy). Enforced in two places: `superagent-report --org-policy` adds a compliance section (spend vs cap, off-policy calls, redacted per-project spend), and the `superagent-safety` PreToolUse hook now asks for confirmation before any Bash command that selects an off-policy model tier (`--model`, `*_MODEL=`, `superagent-switch to`). Kill switch `SUPERAGENT_ORG_POLICY=off`. 24 smoke tests (`test/test-org-policy.sh`, `test/test-hook-safety.sh`) + 10 added to `test/test-report.sh`.
