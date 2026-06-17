@@ -73,7 +73,7 @@ $ superagent-classify "scrape this Cloudflare-protected page"
 
 ---
 
-## 2. The 26 command-line tools
+## 2. The 27 command-line tools
 
 Every capability is a real executable installed to `~/.local/bin/`. Run any of them by hand.
 
@@ -338,7 +338,7 @@ The honest roadmap — gaps we know about, in priority order:
 
 ```
 SuperAgent/
-├── bin/            23 command-line tools + the memory-os MCP server (installed to ~/.local/bin/)
+├── bin/            24 command-line tools + the memory-os MCP server (installed to ~/.local/bin/)
 ├── skills/         32 skills (the source of truth)
 ├── agents/         6 specialist agent personas
 ├── hooks/          9 Claude Code lifecycle hooks (+ 3 helper scripts)
