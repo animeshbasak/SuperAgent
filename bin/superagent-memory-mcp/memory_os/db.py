@@ -148,6 +148,17 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY);
         INSERT OR IGNORE INTO schema_version (version) VALUES (1);
+
+        CREATE TABLE IF NOT EXISTS ccr_cache (
+            hash              TEXT PRIMARY KEY,
+            original_content  TEXT NOT NULL,
+            compressed_content TEXT,
+            kind              TEXT,
+            dropped           INTEGER DEFAULT 0,
+            created_ts        INTEGER NOT NULL,
+            ttl_seconds       INTEGER DEFAULT 1800,
+            retrieval_count   INTEGER DEFAULT 0
+        );
         """
     )
     _migrate(conn)

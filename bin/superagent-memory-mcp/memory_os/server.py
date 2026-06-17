@@ -102,6 +102,21 @@ def memory_forget(id_or_pattern: str, namespace: str | None = None) -> dict:
     )
 
 
+@mcp.tool()
+def memory_retrieve(token: str, query: str | None = None) -> dict:
+    """Retrieve the original content for a CCR sentinel token or bare hash.
+
+    ``token`` is either a full sentinel (``ccr:<hash>:<n>``) emitted by
+    compress-cache-retrieve, or a bare 12-char hex hash.  ``query`` is an
+    optional whitespace-separated list of terms; when provided only lines
+    containing ALL terms (case-insensitive) are returned.
+
+    Returns ``{ok: true, hash, kind, content, truncated_by_query}`` on success
+    or ``{ok: false, reason: "not-found-or-expired", token}`` otherwise.
+    """
+    return tools.memory_retrieve(_conn, token=token, query=query)
+
+
 def main() -> None:
     """Console-script entry point."""
     try:

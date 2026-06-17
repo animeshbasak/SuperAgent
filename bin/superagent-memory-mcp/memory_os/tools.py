@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Iterable
 
 from . import db, vector
+from .ccr import CCRStore
 from .sanitize import sanitize
 
 PIN_DIR_DEFAULT = db.DEFAULT_DB_DIR / "pinned"
@@ -172,6 +173,24 @@ def memory_forget(
         "ids": deleted,
         "namespace": namespace,
     }
+
+
+def memory_retrieve(
+    conn: sqlite3.Connection,
+    *,
+    token: str,
+    query: str | None = None,
+) -> dict:
+    """Retrieve the original content for a CCR sentinel token or bare hash.
+
+    Returns the entry dict on success, or ``{ok: False, reason: ...}`` when
+    the token is not found or has expired.
+    """
+    store = CCRStore(conn)
+    result = store.retrieve(token, query=query)
+    if result is None:
+        return {"ok": False, "reason": "not-found-or-expired", "token": token}
+    return {"ok": True, **result}
 
 
 # Helpers for the MCP server layer ---------------------------------------------
