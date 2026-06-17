@@ -63,3 +63,37 @@ superagent-report [--days N] [--project PATH] [--json] [--out FILE]
 - No baseline-capture command (week-0 manual numbers stay manual).
 - No HTML/PDF rendering — markdown is the deliverable.
 - No claude-mem integration (plugin-internal format, unstable to parse).
+
+## Status
+
+Tasks 1–5 shipped on `feat/superagent-report` (commit `594768e`).
+
+## Follow-up: organisation-wide restriction (2026-06-13)
+
+For org sales the pilot report needs a *governance* surface, not just a spend
+mirror. Added an organisation-wide restriction policy that the report enforces
+and reports against.
+
+**One persistent file** — `~/.superagent/org-policy.json`:
+
+| Field | Restriction |
+|---|---|
+| `monthly_budget_usd` | spend cap — report flags spend over the ceiling |
+| `allowed_model_tiers` | model-usage allowlist (e.g. `["local","haiku"]`) — other tiers are off-policy |
+| `redact_projects` | data-visibility — per-project spend is anonymized (`project-1…`) for org-wide circulation |
+
+**Three enforcement surfaces (the user asked for all of these):**
+
+1. `bin/superagent-org-policy` — `show` / `set` / `check`. `check --model NAME`
+   exits `3` when the model's tier is off-policy; it is the reusable gate.
+   Kill switch `SUPERAGENT_ORG_POLICY=off`. Tests: `test/test-org-policy.sh`.
+2. `superagent-report --org-policy [FILE]` — adds a **## Organisation policy**
+   compliance section: budget vs actual, off-policy call count + spend, and a
+   redacted per-project table. Default runs are unchanged. Tests added to
+   `test/test-report.sh`.
+3. `hooks/superagent-safety.py` — the PreToolUse gate now `ask`s before any Bash
+   command that selects an off-policy model tier (`--model`, `*_MODEL=`,
+   `superagent-switch to`). Tests: `test/test-hook-safety.sh`.
+
+Non-goals: no remote/central policy distribution (the file is per-machine); the
+safety gate is advisory (`ask`, not hard `deny`) and respects the kill switch.

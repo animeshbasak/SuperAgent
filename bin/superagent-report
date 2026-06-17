@@ -7,12 +7,19 @@ measured savings, routing reliability. Only measured numbers — sections
 with no underlying data say "no data", never an extrapolated figure.
 
 Usage: superagent-report [--days N] [--project PATH] [--json] [--out FILE]
+                         [--org-policy [FILE]]
 
 Sources (all local):
   ~/.superagent/cost/calls.jsonl + pricing.json   spend
   ~/.superagent/brain/routes.jsonl                reliability
   ~/.superagent/brain/optimizations.jsonl         prompt optimization
   ~/.claude/superagent-stats.json                 memory/graph tokens saved
+  ~/.superagent/org-policy.json                   org-wide restriction (--org-policy)
+
+With --org-policy the report adds a compliance section: spend vs the org's
+budget cap, calls that breached the allowed-model-tier restriction, and — when
+the policy sets redact_projects — per-project spend with paths anonymized so
+the report can circulate organisation-wide. See bin/superagent-org-policy.
 """
 import json
 import os
@@ -28,6 +35,18 @@ DEFAULT_PRICING = {
     "unknown": {"input": 5.0,  "output": 25.00, "cache_write": 6.25,  "cache_read": 0.50},
 }
 LOCAL_MARKERS = ("local", "ollama", "llamacpp", "lmstudio", "qwen", "deepseek", "minimax")
+
+
+def load_org_policy(home):
+    """Read ~/.superagent/org-policy.json. Self-contained; mirrors the schema in
+    bin/superagent-org-policy (monthly_budget_usd, allowed_model_tiers,
+    redact_projects). Returns {} when absent or unparseable."""
+    try:
+        with open(os.path.join(home, ".superagent", "org-policy.json")) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def bucket(model_str):
@@ -103,13 +122,16 @@ def record_tokens_usd(rec, pricing):
     return tier, tokens, usd
 
 
-def collect(home, days, project):
+def collect(home, days, project, policy=None):
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     pricing = load_pricing(home)
+    allowed_tiers = (policy or {}).get("allowed_model_tiers") or None
 
-    spend = {"total_tokens": 0, "total_usd": 0.0, "by_model": {}, "calls": 0, "local_calls": 0}
+    spend = {"total_tokens": 0, "total_usd": 0.0, "by_model": {}, "by_project": {},
+             "calls": 0, "local_calls": 0}
     opus_in = pricing["opus"]["input"]
     counterfactual_usd = 0.0
+    offpolicy = {"calls": 0, "usd": 0.0, "tiers": {}}
     for rec in iter_jsonl(os.path.join(home, ".superagent", "cost", "calls.jsonl")):
         if not in_window(rec, cutoff):
             continue
@@ -124,11 +146,22 @@ def collect(home, days, project):
         m = spend["by_model"].setdefault(tier, {"tokens": 0, "usd": 0.0})
         m["tokens"] += tokens
         m["usd"] += usd
+        proj = rec.get("project") or "(unattributed)"
+        pm = spend["by_project"].setdefault(proj, {"tokens": 0, "usd": 0.0})
+        pm["tokens"] += tokens
+        pm["usd"] += usd
+        if allowed_tiers and tier not in allowed_tiers:
+            offpolicy["calls"] += 1
+            offpolicy["usd"] += usd
+            offpolicy["tiers"][tier] = offpolicy["tiers"].get(tier, 0) + 1
         counterfactual_usd += tokens * opus_in / 1_000_000
     spend["counterfactual_opus_usd"] = round(counterfactual_usd, 2)
     spend["total_usd"] = round(spend["total_usd"], 4)
     for m in spend["by_model"].values():
         m["usd"] = round(m["usd"], 4)
+    for m in spend["by_project"].values():
+        m["usd"] = round(m["usd"], 4)
+    offpolicy["usd"] = round(offpolicy["usd"], 4)
 
     rel = {"routes_total": 0, "routes_done": 0, "routes_fail": 0, "routes_halt": 0,
            "verified_routes": 0, "top_chains": {}}
@@ -174,13 +207,43 @@ def collect(home, days, project):
     except Exception:
         pass
 
-    return {
+    result = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "period_days": days,
         "spend": spend,
         "reliability": rel,
         "savings": sav,
     }
+
+    if policy is not None:
+        budget = policy.get("monthly_budget_usd")
+        active = bool(budget is not None or allowed_tiers or policy.get("redact_projects"))
+        compliance = {
+            "active": active,
+            "budget_usd": budget,
+            "spend_usd": spend["total_usd"],
+            "over_budget": (budget is not None and spend["total_usd"] > budget),
+            "budget_pct": (round(spend["total_usd"] / budget * 100, 1)
+                           if budget else None),
+            "allowed_model_tiers": allowed_tiers,
+            "offpolicy_calls": offpolicy["calls"],
+            "offpolicy_usd": offpolicy["usd"],
+            "offpolicy_tiers": offpolicy["tiers"],
+            "redact_projects": bool(policy.get("redact_projects")),
+        }
+        compliance["violations"] = int(compliance["over_budget"]) + offpolicy["calls"]
+        result["org_policy"] = compliance
+        if compliance["redact_projects"]:
+            result["spend"]["by_project"] = _redact_projects(spend["by_project"])
+
+    return result
+
+
+def _redact_projects(by_project):
+    """Replace project identifiers with stable project-N aliases (ordered by
+    spend, descending) so a report is safe to circulate organisation-wide."""
+    ordered = sorted(by_project.items(), key=lambda kv: -kv[1]["usd"])
+    return {f"project-{i + 1}": v for i, (_, v) in enumerate(ordered)}
 
 
 def render_markdown(r):
@@ -231,8 +294,63 @@ def render_markdown(r):
             lines.append("- Most-used chains:")
             for chain, n in rel["top_chains"].items():
                 lines.append(f"  - {chain} ({n}×)")
+    if "org_policy" in r:
+        lines += render_org_policy(r)
     lines.append("")
     return "\n".join(lines)
+
+
+def render_org_policy(r):
+    c = r["org_policy"]
+    s = r["spend"]
+    lines = ["", "## Organisation policy", ""]
+    if not c["active"]:
+        lines.append(
+            "no organisation policy configured — run "
+            "`superagent-org-policy set` to define spend/model/visibility restrictions."
+        )
+        return lines
+    if c["violations"] == 0:
+        lines.append("Status: ✅ compliant — no policy violations this period.")
+    else:
+        lines.append(f"Status: ⚠️ {c['violations']} violation(s) this period.")
+    lines.append("")
+    # Budget restriction
+    if c["budget_usd"] is not None:
+        if c["over_budget"]:
+            over = c["spend_usd"] - c["budget_usd"]
+            lines.append(
+                f"- Spend cap: ⚠️ OVER BUDGET by ${over:,.2f} — "
+                f"spent ${c['spend_usd']:,.2f} of ${c['budget_usd']:,.2f} ({c['budget_pct']}%)."
+            )
+        else:
+            lines.append(
+                f"- Spend cap: within budget — ${c['spend_usd']:,.2f} of "
+                f"${c['budget_usd']:,.2f} ({c['budget_pct']}% used)."
+            )
+    else:
+        lines.append("- Spend cap: (none set)")
+    # Model-tier restriction
+    if c["allowed_model_tiers"]:
+        allowed = ", ".join(c["allowed_model_tiers"])
+        if c["offpolicy_calls"] == 0:
+            lines.append(f"- Model tiers: all calls on-policy (allowed: {allowed}).")
+        else:
+            breakdown = ", ".join(f"{t} ×{n}" for t, n in sorted(c["offpolicy_tiers"].items()))
+            lines.append(
+                f"- Model tiers: ⚠️ {c['offpolicy_calls']} call(s) off-policy "
+                f"({breakdown}) spending ${c['offpolicy_usd']:,.2f}. Allowed: {allowed}."
+            )
+    else:
+        lines.append("- Model tiers: (no restriction)")
+    # Visibility restriction (redaction) — surface the per-project table
+    if c["redact_projects"]:
+        lines.append("- Visibility: project identifiers redacted for org-wide sharing.")
+    if s["by_project"]:
+        lines += ["", "| Project | Tokens | USD |", "|---|---|---|"]
+        for proj, m in sorted(s["by_project"].items(), key=lambda kv: -kv[1]["usd"]):
+            lines.append(f"| {proj} | {m['tokens']:,} | ${m['usd']:,.2f} |")
+    return lines
 
 
 def main():
@@ -240,6 +358,9 @@ def main():
     project = None
     as_json = False
     out_path = None
+    org_policy_req = False
+    org_policy_file = None
+    home = os.path.expanduser("~")
     args = sys.argv[1:]
     i = 0
     while i < len(args):
@@ -259,14 +380,36 @@ def main():
         elif a == "--out" and i + 1 < len(args):
             i += 1
             out_path = args[i]
+        elif a == "--org-policy":
+            org_policy_req = True
+            # Optional FILE argument (skip if the next token is another flag)
+            if i + 1 < len(args) and not args[i + 1].startswith("--"):
+                i += 1
+                org_policy_file = args[i]
         else:
             sys.stderr.write(
-                "Usage: superagent-report [--days N] [--project PATH] [--json] [--out FILE]\n"
+                "Usage: superagent-report [--days N] [--project PATH] [--json] "
+                "[--out FILE] [--org-policy [FILE]]\n"
             )
             return 1
         i += 1
 
-    report = collect(os.path.expanduser("~"), days, project)
+    policy = None
+    if org_policy_req:
+        if org_policy_file:
+            try:
+                with open(org_policy_file) as f:
+                    loaded = json.load(f)
+                policy = loaded if isinstance(loaded, dict) else {}
+            except (OSError, ValueError) as e:
+                sys.stderr.write(f"--org-policy: cannot read {org_policy_file}: {e}\n")
+                return 1
+        else:
+            policy = load_org_policy(home)
+        if not policy:
+            policy = {}  # active but empty → renders an (inactive) policy section
+
+    report = collect(home, days, project, policy)
     body = json.dumps(report, indent=2) if as_json else render_markdown(report)
     if out_path:
         with open(out_path, "w") as f:

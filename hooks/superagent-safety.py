@@ -77,6 +77,16 @@ RISKY_NETWORK = [
     (r"\bwget\b[^|]*\bhttps?://(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|::1))",  "wget remote"),
 ]
 
+# Organisation-wide model restriction: where a Bash command selects a model,
+# capture the model token so we can check it against the org policy's
+# allowed_model_tiers (see bin/superagent-org-policy).
+MODEL_SELECTORS = [
+    re.compile(r"--model[=\s]+([\w./:-]+)", re.I),
+    re.compile(r"\b(?:ANTHROPIC|SUPERAGENT|CLAUDE)_MODEL=([\w./:-]+)", re.I),
+    re.compile(r"\bsuperagent-switch\s+to\s+([\w./:-]+)", re.I),
+]
+_LOCAL_MARKERS = ("local", "ollama", "llamacpp", "lmstudio", "qwen", "deepseek", "minimax")
+
 # Edit/Write tools — block edits to sensitive files unless pre-approved
 SENSITIVE_PATHS = [
     re.compile(r"(^|/)\.env(\.|$)"),
@@ -147,10 +157,49 @@ def is_pre_approved(payload: str, allowed: list[re.Pattern]) -> bool:
 # Classification
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _tier_of(model: str) -> str:
+    m = (model or "").lower()
+    if any(marker in m for marker in _LOCAL_MARKERS):
+        return "local"
+    for k in ("opus", "sonnet", "haiku"):
+        if k in m:
+            return k
+    return "unknown"
+
+
+def load_org_policy() -> dict:
+    """Read ~/.superagent/org-policy.json (mirrors bin/superagent-org-policy)."""
+    try:
+        with open(Path.home() / ".superagent" / "org-policy.json") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def classify_model_policy(command: str) -> str | None:
+    """Return a label when the command selects a model tier the organisation
+    policy disallows. None when there is no restriction or no model selected."""
+    if os.environ.get("SUPERAGENT_ORG_POLICY") == "off":
+        return None
+    allowed = load_org_policy().get("allowed_model_tiers")
+    if not allowed:
+        return None
+    for selector in MODEL_SELECTORS:
+        for token in selector.findall(command):
+            tier = _tier_of(token)
+            if tier not in allowed:
+                return f"off-policy model '{token}' (tier {tier}; org allows {', '.join(allowed)})"
+    return None
+
+
 def classify_bash(command: str) -> tuple[str | None, str | None]:
     for pattern, label in RISKY_BASH:
         if re.search(pattern, command, flags=re.I):
             return label, "risky"
+    label = classify_model_policy(command)
+    if label:
+        return label, "org-policy"
     if (Path.home() / ".superagent" / "local-only").exists():
         for pattern, label in RISKY_NETWORK:
             if re.search(pattern, command, flags=re.I):

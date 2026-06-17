@@ -39,7 +39,7 @@ SuperAgent removes all four. One config. One safety gate. One cost tracker. One 
 
 | Layer | Count | What it is |
 |---|---|---|
-| **CLI tools** (`bin/`) | 25 | Every capability is a standalone command you can run by hand. |
+| **CLI tools** (`bin/`) | 26 | Every capability is a standalone command you can run by hand. |
 | **Skills** (`skills/`) | 32 | The source-of-truth instruction set, routed automatically by the classifier. |
 | **Specialist agents** (`agents/`) | 6 | Named personas (architect, coder, reviewer, security, tester, brain). |
 | **Lifecycle hooks** (`hooks/`) | 9 | Real Claude Code hooks across the full session lifecycle. |
@@ -73,7 +73,7 @@ $ superagent-classify "scrape this Cloudflare-protected page"
 
 ---
 
-## 2. The 25 command-line tools
+## 2. The 26 command-line tools
 
 Every capability is a real executable installed to `~/.local/bin/`. Run any of them by hand.
 
@@ -95,6 +95,7 @@ Every capability is a real executable installed to `~/.local/bin/`. Run any of t
 | `superagent-cost [today\|week\|all]` | Real Anthropic spend, grouped by model, with a coach note. `--json`. |
 | `superagent-cost-alerts` | Fires tiered budget alerts; drops `auto-downgrade.flag` near the limit. |
 | `superagent-switch` | Swap the active LLM backend: `list` · `to <model>` · `back` · `canary` · `status` · `auto on\|off`. Canary-tests before flipping. |
+| `superagent-org-policy` | Organisation-wide restriction policy: `show` · `set` · `check`. One file (`~/.superagent/org-policy.json`) caps spend, limits which model tiers are allowed, and redacts project names from shared reports. `check` is the gate the safety hook and reports call. |
 
 ### Quality, safety & shipping
 | Tool | What it does |
@@ -120,7 +121,7 @@ Every capability is a real executable installed to `~/.local/bin/`. Run any of t
 | `superagent-metrics [today\|week\|all]` | Aggregates counter/gauge/histogram metrics with p50/p95/p99 + 2σ anomaly flags. |
 | `superagent-obs` | Low-level emitter for spans + metrics (used by the hooks). |
 | `superagent-obs-rotate` | Daily-rotates `spans.jsonl` / `metrics.jsonl`, prunes anything older than 30 days. |
-| `superagent-report` | One-page pilot report from local telemetry — spend by model, measured savings, routing reliability. Markdown or `--json`. |
+| `superagent-report` | One-page pilot report from local telemetry — spend by model, measured savings, routing reliability. Markdown or `--json`. `--org-policy` adds a compliance section: spend vs the org budget cap, off-policy model calls, and redacted per-project spend. |
 
 ---
 

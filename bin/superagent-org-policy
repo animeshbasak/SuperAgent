@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""superagent-org-policy — organisation-wide restriction policy.
+
+One persistent file (`~/.superagent/org-policy.json`) defines the restrictions
+an org imposes on every SuperAgent session on a machine:
+
+  monthly_budget_usd   spend cap — reports flag spend over this ceiling
+  allowed_model_tiers  model-usage restriction — tiers NOT listed are off-policy
+                       (tier names: local, haiku, sonnet, opus, unknown)
+  redact_projects      data-visibility restriction — strip per-project paths
+                       from shared reports so they circulate org-wide safely
+
+The same file is read by `superagent-report` (compliance section) and by the
+`superagent-safety` PreToolUse hook (blocks shelling out to an off-policy
+model). `check` is the reusable gate other tools call.
+
+Usage:
+  superagent-org-policy show [--json]
+  superagent-org-policy set [--budget USD] [--tiers local,haiku]
+                            [--redact on|off] [--clear]
+  superagent-org-policy check --model NAME      # exit 3 if tier off-policy
+  superagent-org-policy check --tier TIER
+
+Exit codes: 0 ok · 2 usage error · 3 policy violation.
+Kill switch: SUPERAGENT_ORG_POLICY=off makes `check` always pass.
+"""
+import json
+import os
+import sys
+import tempfile
+
+TIERS = ("local", "haiku", "sonnet", "opus", "unknown")
+LOCAL_MARKERS = ("local", "ollama", "llamacpp", "lmstudio", "qwen", "deepseek", "minimax")
+
+
+def policy_path(home=None):
+    home = home or os.path.expanduser("~")
+    return os.path.join(home, ".superagent", "org-policy.json")
+
+
+def bucket(model_str):
+    """Map a raw model name to a pricing tier. Mirrors bin/superagent-report."""
+    m = (model_str or "").lower()
+    if any(marker in m for marker in LOCAL_MARKERS):
+        return "local"
+    for k in ("opus", "sonnet", "haiku"):
+        if k in m:
+            return k
+    return "unknown"
+
+
+def load_policy(home=None):
+    """Return the policy dict, or {} when no policy file is present/parseable."""
+    try:
+        with open(policy_path(home)) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def is_active(policy):
+    return bool(
+        policy.get("monthly_budget_usd") is not None
+        or policy.get("allowed_model_tiers")
+        or policy.get("redact_projects")
+    )
+
+
+def tier_allowed(policy, tier):
+    """True when `tier` is permitted. No tier restriction → everything allowed."""
+    allowed = policy.get("allowed_model_tiers")
+    if not allowed:
+        return True
+    return tier in allowed
+
+
+def write_policy(policy, home=None):
+    path = policy_path(home)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".org-policy.")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(policy, f, indent=2, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+# ── subcommands ───────────────────────────────────────────────────────────────
+
+def cmd_show(args, home=None):
+    policy = load_policy(home)
+    if "--json" in args:
+        print(json.dumps(policy, indent=2, sort_keys=True))
+        return 0
+    if not is_active(policy):
+        print("No organisation policy set. `superagent-org-policy set --help` to create one.")
+        return 0
+    print("Organisation policy (active):")
+    budget = policy.get("monthly_budget_usd")
+    print(f"  Spend cap          {'$%.2f / period' % budget if budget is not None else '(none)'}")
+    tiers = policy.get("allowed_model_tiers")
+    print(f"  Allowed model tiers {', '.join(tiers) if tiers else '(no restriction)'}")
+    print(f"  Redact projects    {'on' if policy.get('redact_projects') else 'off'}")
+    print(f"  File               {policy_path(home)}")
+    return 0
+
+
+def cmd_set(args, home=None):
+    policy = load_policy(home)
+    if "--clear" in args:
+        write_policy({}, home)
+        print("Organisation policy cleared.")
+        return 0
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--budget" and i + 1 < len(args):
+            i += 1
+            try:
+                policy["monthly_budget_usd"] = float(args[i])
+            except ValueError:
+                sys.stderr.write("--budget expects a number\n")
+                return 2
+        elif a == "--tiers" and i + 1 < len(args):
+            i += 1
+            tiers = [t.strip().lower() for t in args[i].split(",") if t.strip()]
+            bad = [t for t in tiers if t not in TIERS]
+            if bad:
+                sys.stderr.write(f"unknown tier(s): {', '.join(bad)} — choose from {', '.join(TIERS)}\n")
+                return 2
+            policy["allowed_model_tiers"] = tiers
+        elif a == "--redact" and i + 1 < len(args):
+            i += 1
+            val = args[i].lower()
+            if val not in ("on", "off"):
+                sys.stderr.write("--redact expects on|off\n")
+                return 2
+            policy["redact_projects"] = val == "on"
+        else:
+            sys.stderr.write(f"unknown argument: {a}\n")
+            return 2
+        i += 1
+    write_policy(policy, home)
+    return cmd_show([], home)
+
+
+def cmd_check(args, home=None):
+    if os.environ.get("SUPERAGENT_ORG_POLICY") == "off":
+        return 0
+    tier = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--model" and i + 1 < len(args):
+            i += 1
+            tier = bucket(args[i])
+        elif a == "--tier" and i + 1 < len(args):
+            i += 1
+            tier = args[i].strip().lower()
+        else:
+            sys.stderr.write("Usage: superagent-org-policy check (--model NAME | --tier TIER)\n")
+            return 2
+        i += 1
+    if tier is None:
+        sys.stderr.write("check needs --model NAME or --tier TIER\n")
+        return 2
+    policy = load_policy(home)
+    if tier_allowed(policy, tier):
+        return 0
+    allowed = ", ".join(policy.get("allowed_model_tiers", []))
+    sys.stderr.write(
+        f"[org-policy] model tier '{tier}' is off-policy — organisation allows: {allowed}\n"
+    )
+    return 3
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help", "help"):
+        sys.stdout.write(__doc__)
+        return 0
+    sub, rest = args[0], args[1:]
+    if sub == "show":
+        return cmd_show(rest)
+    if sub == "set":
+        return cmd_set(rest)
+    if sub == "check":
+        return cmd_check(rest)
+    sys.stderr.write(f"unknown subcommand: {sub}\n")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

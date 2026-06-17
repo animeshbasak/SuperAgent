@@ -122,6 +122,40 @@ rc=0
 HOME="$TMPHOME" "$REPORT" --bogus >/dev/null 2>&1 || rc=$?
 assert "bad flag exits 1" "$rc" "1"
 
+# ── Test 13: --org-policy adds a compliance section ───────────────────────────
+cat > "$TMPHOME/.superagent/org-policy.json" <<EOF
+{"monthly_budget_usd":10,"allowed_model_tiers":["local","haiku"],"redact_projects":true}
+EOF
+out=$(HOME="$TMPHOME" "$REPORT" --org-policy 2>&1)
+assert_contains "org-policy section present" "$out" "## Organisation policy"
+assert_contains "over-budget flagged (15.00 > 10)" "$out" "OVER BUDGET"
+assert_contains "off-policy opus call flagged" "$out" "off-policy"
+
+# ── Test 14: --org-policy json carries compliance numbers ─────────────────────
+out=$(HOME="$TMPHOME" "$REPORT" --org-policy --json 2>&1)
+viol=$(echo "$out" | python3 -c "import sys,json; print(json.load(sys.stdin)['org_policy']['violations'])")
+assert "violations counted (over-budget + 1 off-policy call)" "$viol" "2"
+over=$(echo "$out" | python3 -c "import sys,json; print(json.load(sys.stdin)['org_policy']['over_budget'])")
+assert "over_budget true" "$over" "True"
+
+# ── Test 15: redaction anonymizes project identifiers ─────────────────────────
+out=$(HOME="$TMPHOME" "$REPORT" --org-policy 2>&1)
+assert_contains "project redacted to alias" "$out" "project-1"
+if echo "$out" | grep -qF "p1"; then redacted=leaked; else redacted=clean; fi
+assert "raw project name not present when redacted" "$redacted" "clean"
+
+# ── Test 16: default run still omits org-policy section ────────────────────────
+out=$(HOME="$TMPHOME" "$REPORT" 2>&1)
+if echo "$out" | grep -qF "## Organisation policy"; then leak=yes; else leak=no; fi
+assert "no org-policy section without the flag" "$leak" "no"
+
+# ── Test 17: --org-policy with no policy file says so, exit 0 ──────────────────
+EMPTYHOME=$(mktemp -d)
+out=$(HOME="$EMPTYHOME" "$REPORT" --org-policy 2>&1); rc=$?
+rm -rf "$EMPTYHOME"
+assert "empty-policy run exits 0" "$rc" "0"
+assert_contains "empty policy explains how to set one" "$out" "no organisation policy configured"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 [[ $fail -eq 0 ]] || exit 1
